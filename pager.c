@@ -8,7 +8,7 @@ void* get_page(table_pager* p, int page_no)
     void* data;
 
     if ((data = p->pages[page_no]) == NULL) {
-        data = malloc(PAGE_SIZE);
+        data = calloc(PAGE_SIZE, 1);
 
         if (data == NULL) {
             sys_err("malloc");

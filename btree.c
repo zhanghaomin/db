@@ -1,17 +1,32 @@
 #include "btree.h"
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
-db_row* get_row(void* page, int pos)
+int btree_find_in_leaf(btree_node* node, int id)
 {
-}
+    assert(node->is_leaf);
+    int scan_rec_cnt, current_id;
+    void* pos;
+    scan_rec_cnt = 0;
 
-int get_right(db_row* r)
-{
-}
+    pos = (void*)node + sizeof(btree_node);
+find:
+    if (scan_rec_cnt == node->rec_num) { // 到底了
+        return 0;
+    }
 
-int get_left(db_row* r)
-{
+    memcpy(&current_id, pos, sizeof(int));
+
+    if (id < current_id) {
+        return 0;
+    } else if (id > current_id) { // 右移
+        pos += get_row_size();
+        scan_rec_cnt++;
+        goto find;
+    }
+
+    return (int)(pos + sizeof(int));
 }
 
 int btree_find(db_table* t, int id)
@@ -29,9 +44,7 @@ find_in_new_node:
     current_node = (btree_node*)get_page(t->pager, current_page_num);
 
     if (current_node->is_leaf) {
-        row_size = get_row_size();
-    } else {
-        row_size = sizeof(int);
+        return btree_find_in_leaf(current_node, id);
     }
 
     pos = (void*)current_node + sizeof(btree_node);
@@ -42,32 +55,36 @@ find_in_old_node:
     if (scan_rec_cnt == current_node->rec_num) {
         current_page_num = left;
         goto find_in_new_node;
-        goto find_in_new_node;
     }
 
     memcpy(&current_id, pos + sizeof(int), sizeof(int));
-    memcpy(&right, pos + sizeof(int) + row_size, sizeof(int));
+    memcpy(&right, pos + sizeof(int) + sizeof(int), sizeof(int));
 
-    // 进入子节点
-    if (id < current_id) {
+    if (id < current_id) { // 进入子节点
         current_page_num = left;
         goto find_in_new_node;
-    }
-
-    // 右移
-    if (id > current_id) {
+    } else if (id > current_id) { // 右移动
         pos += sizeof(int) + row_size;
         scan_rec_cnt++;
         goto find_in_old_node;
-    }
-
-    // 是叶子，直接取值，不是的话，要进入叶子节点
-    if (id == current_id) {
-        if (current_node->is_leaf) {
-            return (int)(pos + sizeof(int));
-        }
-
-        current_page_num = left;
+    } else { // 右边大于等于,进入叶子节点
+        current_page_num = right;
         goto find_in_new_node;
     }
+}
+
+void btree_insert(db_table* t, db_row* r)
+{
+    btree_node* node;
+    void* current;
+    node = get_page(t->pager, t->primary_data->last_page);
+    current = node->rec_num * get_row_size() + sizeof(btree_node) + (void*)node;
+    memcpy(current, r, sizeof(db_row));
+    node->rec_num++;
+    return;
+}
+
+int get_row_size()
+{
+    return sizeof(db_row);
 }

@@ -1,12 +1,10 @@
 #ifndef _PAGER_H
 #define _PAGER_H
-#include "table.h"
 
 #define MAX_CACHE_SIZE 1 << 20
 #define PAGE_SIZE 4096
 
 typedef struct {
-    db_table* table;
     int fd;
     // TODO:lru
     void* pages[MAX_CACHE_SIZE / PAGE_SIZE];
