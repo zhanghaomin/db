@@ -1,55 +1,73 @@
 #include "btree.h"
 #include <stdlib.h>
+#include <string.h>
 
-db_row* get_row_by_row_pos(void* page, int pos)
+db_row* get_row(void* page, int pos)
 {
 }
 
-int get_right_node(db_row* r)
+int get_right(db_row* r)
 {
 }
 
-int get_left_node(db_row* r)
+int get_left(db_row* r)
 {
 }
 
-db_row* btree_find(db_table* t, int id)
+int btree_find(db_table* t, int id)
 {
     btree_node* current_node;
-    page_directory_entry* current;
-    current_node = (btree_node*)get_page(t->pager, t->primary_data->root);
-    int current_id, current_row_pos;
+    void* pos;
+    int row_size;
+    int current_id, left, right;
+    int current_page_num;
+    int scan_rec_cnt;
+    current_page_num = t->primary_data->root;
 
-find_row:
-    for (int i = 0; i < current_node->rec_num; i++) {
-        current_id = current_node->page_directory[i].id;
-        current_row_pos = current_node->page_directory[i].row_pos;
+find_in_new_node:
+    scan_rec_cnt = 0;
+    current_node = (btree_node*)get_page(t->pager, current_page_num);
 
-        if (i == 0) {
-        }
-
-        if (i == current_node->rec_num - 1) {
-            /* code */
-        }
-
-        
-
-        if (i == 0 && current_node->page_directory[i].id > id) {
-            current_node = (btree_node*)get_page(t->pager, get_left_node(get_row_by_row_pos((void*)current_node, current_node->page_directory[i].row_pos)));
-            goto find_row;
-        } else if (current_node->page_directory[i].id < id) {
-            continue;
-        } else if (current_node->page_directory[i].id == id) {
-            return get_row_by_row_pos((void*)current_node, current_node->page_directory[i].row_pos);
-        } else if (current_node->page_directory[i].id > id) {
-            if (i == current_node->rec_num - 1) {
-                current_node = (btree_node*)get_page(t->pager, get_right_node(get_row_by_row_pos((void*)current_node, current_node->page_directory[i].row_pos)));
-                goto find_row;
-            }
-
-            return NULL;
-        }
+    if (current_node->is_leaf) {
+        row_size = get_row_size();
+    } else {
+        row_size = sizeof(int);
     }
 
-    return 0;
+    pos = (void*)current_node + sizeof(btree_node);
+find_in_old_node:
+    memcpy(&left, pos, sizeof(int));
+
+    // 到底了
+    if (scan_rec_cnt == current_node->rec_num) {
+        current_page_num = left;
+        goto find_in_new_node;
+        goto find_in_new_node;
+    }
+
+    memcpy(&current_id, pos + sizeof(int), sizeof(int));
+    memcpy(&right, pos + sizeof(int) + row_size, sizeof(int));
+
+    // 进入子节点
+    if (id < current_id) {
+        current_page_num = left;
+        goto find_in_new_node;
+    }
+
+    // 右移
+    if (id > current_id) {
+        pos += sizeof(int) + row_size;
+        scan_rec_cnt++;
+        goto find_in_old_node;
+    }
+
+    // 是叶子，直接取值，不是的话，要进入叶子节点
+    if (id == current_id) {
+        if (current_node->is_leaf) {
+            return (int)(pos + sizeof(int));
+        }
+
+        current_page_num = left;
+        goto find_in_new_node;
+    }
 }

@@ -21,4 +21,6 @@ struct _db_table {
 
 typedef struct _db_table db_table;
 
+int get_row_size();
+
 #endif
