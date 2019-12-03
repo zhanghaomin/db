@@ -1,25 +1,17 @@
-#ifndef UTIL_H
-#define UTIL_H 1
+#ifndef _UTIL_H
+#define _UTIL_H
 
 #include <errno.h>
-#include <signal.h>
-#include <stdarg.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+#include <sys/stat.h>
 
-extern void sys_err(const char* format, ...);
+#define sys_err(notice) _sys_err(notice, __FILE__, __LINE__)
 
-void sys_err(const char* format, ...)
-{
-    va_list ap;
-    char buf[1024] = { 0 };
-    va_start(ap, format);
-    vsprintf(buf, format, ap);
-    printf("%s err: %s\n", buf, strerror(errno));
-    va_end(ap);
-    exit(-1);
-}
+extern void _sys_err(char* notice, char* file, int lineno);
+extern int open_file(char* name);
+extern int strindex(char* str, char c);
 
 #endif
