@@ -1,14 +1,14 @@
 #include "btree.h"
 #include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 int btree_find_in_leaf(btree_node* node, int id)
 {
     assert(node->is_leaf);
-    int scan_rec_cnt, current_id;
+    int scan_rec_cnt = 0;
     void* pos;
-    scan_rec_cnt = 0;
 
     pos = (void*)node + sizeof(btree_node);
 find:
@@ -16,17 +16,19 @@ find:
         return 0;
     }
 
-    memcpy(&current_id, pos, sizeof(int));
+    db_row r;
+    memcpy(&r, pos, sizeof(r));
 
-    if (id < current_id) {
+    if (r.id > id) {
         return 0;
-    } else if (id > current_id) { // 右移
+    } else if (r.id < id) { // 右移
         pos += get_row_size();
         scan_rec_cnt++;
         goto find;
     }
 
-    return (int)(pos + sizeof(int));
+    printf("btree_node size: %d\n", sizeof(btree_node));
+    return sizeof(btree_node) + scan_rec_cnt * get_row_size();
 }
 
 int btree_find(db_table* t, int id)
@@ -77,8 +79,11 @@ void btree_insert(db_table* t, db_row* r)
 {
     btree_node* node;
     void* current;
-    node = get_page(t->pager, t->primary_data->last_page);
+    node = (btree_node*)get_page(t->pager, t->primary_data->last_page);
+    node->is_leaf = 1;
     current = node->rec_num * get_row_size() + sizeof(btree_node) + (void*)node;
+    printf("current: %p\n", current);
+    printf("row size: %ld\n", get_row_size());
     memcpy(current, r, sizeof(db_row));
     node->rec_num++;
     return;

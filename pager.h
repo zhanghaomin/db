@@ -11,5 +11,5 @@ typedef struct {
 } table_pager;
 
 void* get_page(table_pager* p, int page_no);
-
+int flush_page(table_pager* p, int page_no);
 #endif
