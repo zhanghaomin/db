@@ -75,6 +75,13 @@ find_in_old_node:
     }
 }
 
+void btree_check_overflow(btree_node* n, db_row* r)
+{
+    if (n->rec_num * get_row_size() + sizeof(btree_node) > PAGE_SIZE) {
+        // split
+    }
+}
+
 void btree_insert(db_table* t, db_row* r)
 {
     btree_node* node;
@@ -83,7 +90,7 @@ void btree_insert(db_table* t, db_row* r)
     node->is_leaf = 1;
     current = node->rec_num * get_row_size() + sizeof(btree_node) + (void*)node;
     printf("current: %p\n", current);
-    printf("row size: %ld\n", get_row_size());
+    printf("row size: %d\n", get_row_size());
     memcpy(current, r, sizeof(db_row));
     node->rec_num++;
     return;
