@@ -75,10 +75,25 @@ find_in_old_node:
     }
 }
 
-void btree_check_overflow(btree_node* n, db_row* r)
+void btree_check_overflow(db_table* t, btree_node* n, db_row* r)
 {
+    btree_node* new;
+    btree_node* parent;
+    int move_rec_num = 0;
     if (n->rec_num * get_row_size() + sizeof(btree_node) > PAGE_SIZE) {
         // split
+        new = (btree_node*)get_page(t->pager, ++t->primary_data->last_page);
+        new->is_leaf = n->is_leaf;
+        move_rec_num = n->rec_num / 2;
+        memmove((void*)new + sizeof(btree_node), (void*)n + sizeof(btree_node) + sizeof(*r) * move_rec_num, sizeof(*r) * (n->rec_num - move_rec_num));
+
+        if (n->parent == 0) {
+            n->parent = ++t->primary_data->last_page;
+        }
+
+        parent = (btree_node*)get_page(t->pager, n->parent);
+        parent->is_leaf = 0;
+        
     }
 }
 

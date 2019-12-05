@@ -1,6 +1,9 @@
 # db
 simple database 
 
-1. 不考虑删除, append only
-2. btree
-3. 固定格式
+v0.0.1
+1. crud
+2. 不考虑索引 
+3. 块内紧密存储
+4. 储存每个块的剩余空间（初期用数组）
+5. 一张表最大4096个page
