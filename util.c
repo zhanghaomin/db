@@ -38,3 +38,27 @@ int open_file(char* name)
 
     return open(name, O_RDWR | O_CREAT, 0644);
 }
+
+void* _smalloc(size_t size, char* file, int lineno)
+{
+    void* data;
+    data = malloc(size);
+
+    if (data == NULL) {
+        _sys_err("malloc", file, lineno);
+    }
+
+    return data;
+}
+
+void* _scalloc(size_t size, size_t repeat, char* file, int lineno)
+{
+    void* data;
+    data = calloc(size, repeat);
+
+    if (data == NULL) {
+        _sys_err("calloc", file, lineno);
+    }
+
+    return data;
+}
