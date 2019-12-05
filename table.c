@@ -180,7 +180,7 @@ int serialize_row(void* store, row_fmt* rf, col_value* cvs, int col_count)
             return -1;
         }
 
-        if (!cf->is_dynamic) { // 动态属性需要额外空间储存位置
+        if (!cf->is_dynamic) {
             memcpy(store, &cvs[i].len, sizeof(int));
             store += sizeof(int);
             memcpy(store, cvs[i].data, cvs[i].len);
