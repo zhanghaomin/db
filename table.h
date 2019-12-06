@@ -12,7 +12,7 @@ typedef enum {
 } col_type;
 
 typedef struct {
-    char* name;
+    col_type type;
     void* data;
     int len;
 } col_value;
@@ -28,11 +28,13 @@ typedef struct {
 } row_header;
 
 typedef struct {
+    char** origin_cols_name; // 原始字段数组, 定义时顺序
+    int origin_cols_count; // 原始字段数量
+    col_fmt* cols_fmt; // 字段格式数组, 与上面下标对应
     char** static_cols_name; // 定长字段数组
     char** dynamic_cols_name; // 不定长字段数组
     int static_cols_count; // 定长字段数量
     int dynamic_cols_count; // 不定长字段数量
-    col_fmt* cols_fmt; // 字段格式数组, 与上面下标对应, 先放静态, 再放动态
 } row_fmt;
 
 typedef struct {
@@ -67,5 +69,52 @@ typedef struct {
     int row_num; // 当前指向第几行
     int page_row_num; // 当前指向page中第几行
 } cursor;
+
+typedef enum {
+    INTEGER,
+    FLOAT,
+    STRING
+} input_literal_type;
+
+typedef struct {
+    input_literal_type type;
+    void* data;
+    int len;
+} input_literal;
+
+typedef enum {
+    EQ, // =
+    GT, // >
+    LT, // <
+    GTE, // >=
+    LTE, // <=
+    NEQ // != <>
+} cmp_op;
+
+typedef enum {
+    W_AND, // and
+    W_OR // or
+} logic_op;
+
+struct _where_stmt {
+    int is_leaf; // leaf or node
+    union {
+        cmp_op compare; // leaf
+        logic_op logic; // node
+    } op;
+    union {
+        struct _where_stmt* stmt; // node
+        input_literal* val; // leaf
+    } children[2];
+};
+
+typedef struct _where_stmt where_stmt;
+
+void unserialize_row(void* row, row_fmt* rf, col_value** cvs);
+void destory_col_val(col_value* cv);
+// int serialize_row(void* store, row_fmt* rf, col_value* cvs, int col_count);
+// col_value* unserialize_row(void* row, row_fmt* rf, int* cols_count);
+// void destory_col_vals(col_value* cvs, int cols_count);
+// void insert_row(table* t, pager* p, col_value* cvs, int col_count);
 
 #endif
