@@ -429,22 +429,46 @@ int where_condition_pass(void* row, row_fmt* rf, where_stmt* ws)
 {
     col_value cv;
     int res;
-    assert(ws->is_leaf);
-    get_col_val(row, rf, ws->children[0].val->data, &cv);
-    res = do_cmp_op(&cv, ws->children[1].val, ws->op.compare);
-    destory_col_val(&cv);
-    return res;
+
+    if (ws->is_leaf) {
+        get_col_val(row, rf, ws->children[0].val->data, &cv);
+        res = do_cmp_op(&cv, ws->children[1].val, ws->op.compare);
+        destory_col_val(&cv);
+        return res;
+    }
+
+    if (ws->op.logic == W_AND) {
+        return where_condition_pass(row, rf, ws->children[0].stmt) && where_condition_pass(row, rf, ws->children[1].stmt);
+    } else if (ws->op.logic == W_OR) {
+        return where_condition_pass(row, rf, ws->children[0].stmt) || where_condition_pass(row, rf, ws->children[1].stmt);
+    }
+
+    // never happen
+    exit(-1);
 }
 
-col_value** select_row(cursor* c, char** expect_cols, int expect_cols_count, where_stmt* ws, int* col_count, int* row_count)
+result_rows select_row(cursor* c, char** expect_cols, int expect_cols_count, where_stmt* ws, int* row_count)
 {
+    int rc = 0;
+    result_rows rows;
+
+    rows = smalloc(sizeof(result_row));
     cursor_rewind(c);
 
-    // while (!cursor_is_end(c)) {
-    //     if (where_condition_pass(cursor_value(c), c->table->row_fmt, )) {
-    //         /* code */
-    //     }
-    // }
+    while (!cursor_is_end(c)) {
+        if (where_condition_pass(cursor_value(c), c->table->row_fmt, ws)) {
+            rows = realloc(rows, rc * sizeof(result_row));
+            rows[rc] = smalloc(sizeof(col_value) * expect_cols_count);
+
+            for (int i = 0; i < expect_cols_count; i++) {
+                get_col_val(cursor_value(c), c->table->row_fmt, expect_cols[i], &rows[rc][i]);
+            }
+
+            rc++;
+        }
+    }
+
+    return rows;
 }
 
 // void update_row

@@ -17,6 +17,9 @@ typedef struct {
     int len;
 } col_value;
 
+typedef col_value* result_row;
+typedef result_row* result_rows;
+
 typedef struct {
     col_type type; // 字段类型
     int is_dynamic; // 是否变长
@@ -70,45 +73,45 @@ typedef struct {
     int page_row_num; // 当前指向page中第几行
 } cursor;
 
-typedef enum {
-    INTEGER,
-    FLOAT,
-    STRING
-} input_literal_type;
+// typedef enum {
+//     INTEGER,
+//     FLOAT,
+//     STRING
+// } input_literal_type;
 
-typedef struct {
-    input_literal_type type;
-    void* data;
-    int len;
-} input_literal;
+// typedef struct {
+//     input_literal_type type;
+//     void* data;
+//     int len;
+// } input_literal;
 
-typedef enum {
-    EQ, // =
-    GT, // >
-    LT, // <
-    GTE, // >=
-    LTE, // <=
-    NEQ // != <>
-} cmp_op;
+// typedef enum {
+//     EQ, // =
+//     GT, // >
+//     LT, // <
+//     GTE, // >=
+//     LTE, // <=
+//     NEQ // != <>
+// } cmp_op;
 
-typedef enum {
-    W_AND, // and
-    W_OR // or
-} logic_op;
+// typedef enum {
+//     W_AND, // and
+//     W_OR // or
+// } logic_op;
 
-struct _where_stmt {
-    int is_leaf; // leaf or node
-    union {
-        cmp_op compare; // leaf
-        logic_op logic; // node
-    } op;
-    union {
-        struct _where_stmt* stmt; // node
-        input_literal* val; // leaf
-    } children[2];
-};
+// struct _where_stmt {
+//     int is_leaf; // leaf or node
+//     union {
+//         cmp_op compare; // leaf
+//         logic_op logic; // node
+//     } op;
+//     union {
+//         struct _where_stmt* stmt; // node
+//         input_literal* val; // leaf
+//     } children[2];
+// };
 
-typedef struct _where_stmt where_stmt;
+// typedef struct _where_stmt where_stmt;
 
 void unserialize_row(void* row, row_fmt* rf, col_value** cvs);
 void destory_col_val(col_value* cv);
