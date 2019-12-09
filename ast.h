@@ -1,30 +1,27 @@
 #ifndef _AST_H
 #define _AST_H
 
-typedef struct {
-    int type;
-} ast;
+#include "db_val.h"
 
 typedef enum {
-    INTEGER,
-    FLOAT,
-    STRING
-} ast_val_type;
+    AST_VAL,
+    AST_SELECT,
+    AST_EXPECT_COLS,
+    AST_WHERE_NODE,
+    AST_WHERE_LEAF
+} ast_kind;
 
-typedef union {
-    ast_val_type type;
-    union {
-        int num;
-        double d;
-        char* str;
-    } val;
-} ast_val;
+typedef struct _ast {
+    ast_kind kind;
+    int op;
+    int children;
+    struct _ast** child;
+} ast;
 
 typedef struct {
-    int type;
-    char** expect_cols;
-    int expect_cols_count;
-} select_expect_cols_ast;
+    ast_kind kind;
+    db_val* val;
+} ast_val;
 
 typedef enum {
     EQ, // =
@@ -40,26 +37,18 @@ typedef enum {
     W_OR // or
 } logic_op;
 
-struct _where_ast {
-    int type;
-    int is_leaf; // leaf or node
-    union {
-        cmp_op compare; // leaf
-        logic_op logic; // node
-    } op;
-    union {
-        ast* ast; // node
-        ast_val* val; // leaf
-    } children[2];
-};
+#define create_val_ast(_t, _v) ({         \
+    ast_val* _va;                         \
+    _va = smalloc(sizeof(ast_val));       \
+    _va->kind = AST_VAL;                  \
+    _va->val = smalloc(sizeof(db_val));   \
+    _va->val = DB_VAl_##_t(_va->val, _v); \
+    (ast*)_va;                            \
+})
 
-typedef struct _where_ast where_ast;
+ast* create_ast(int children, ast_kind kind, int op, ...);
+void ast_add_child(ast* a, ast* child);
 
-typedef struct {
-    int type;
-    select_expect_cols_ast* expect_cols;
-    char* table;
-    where_ast* where;
-} select_ast;
+ast* G_AST;
 
 #endif

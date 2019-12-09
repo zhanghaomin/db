@@ -73,6 +73,12 @@ typedef struct {
     int page_row_num; // 当前指向page中第几行
 } cursor;
 
+// typedef struct {
+//     int type;
+//     val_ast* expect_cols;
+//     int expect_cols_count;
+// } select_expect_cols_ast;
+
 // typedef enum {
 //     INTEGER,
 //     FLOAT,
@@ -85,20 +91,6 @@ typedef struct {
 //     int len;
 // } input_literal;
 
-// typedef enum {
-//     EQ, // =
-//     GT, // >
-//     LT, // <
-//     GTE, // >=
-//     LTE, // <=
-//     NEQ // != <>
-// } cmp_op;
-
-// typedef enum {
-//     W_AND, // and
-//     W_OR // or
-// } logic_op;
-
 // struct _where_stmt {
 //     int is_leaf; // leaf or node
 //     union {
@@ -110,6 +102,13 @@ typedef struct {
 //         input_literal* val; // leaf
 //     } children[2];
 // };
+
+// typedef struct {
+//     int type;
+//     select_expect_cols_ast* expect_cols;
+//     char* table;
+//     where_ast* where;
+// } select_ast;
 
 // typedef struct _where_stmt where_stmt;
 
