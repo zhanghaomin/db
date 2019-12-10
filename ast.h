@@ -7,13 +7,17 @@ typedef enum {
     AST_VAL,
     AST_SELECT,
     AST_EXPECT_COLS,
+    AST_TABLE,
     AST_WHERE_NODE,
-    AST_WHERE_LEAF
+    AST_WHERE_LEAF,
+    AST_COL_FMT,
+    AST_COL_FMT_LIST,
+    AST_CREATE
 } ast_kind;
 
 typedef struct _ast {
     ast_kind kind;
-    int op;
+    int attr;
     int children;
     struct _ast** child;
 } ast;
@@ -24,18 +28,22 @@ typedef struct {
 } ast_val;
 
 typedef enum {
+    C_INT,
+    C_DOUBLE,
+    C_CHAR,
+    C_VARCHAR
+} col_type;
+
+typedef enum {
     EQ, // =
     GT, // >
     LT, // <
     GTE, // >=
     LTE, // <=
-    NEQ // != <>
-} cmp_op;
-
-typedef enum {
+    NEQ, // != <>
     W_AND, // and
     W_OR // or
-} logic_op;
+} cmp_op;
 
 #define create_val_ast(_t, _v) ({         \
     ast_val* _va;                         \
@@ -46,8 +54,9 @@ typedef enum {
     (ast*)_va;                            \
 })
 
-ast* create_ast(int children, ast_kind kind, int op, ...);
+ast* create_ast(int children, ast_kind kind, int attr, ...);
 void ast_add_child(ast* a, ast* child);
+void print_ast(ast* a, int space_count);
 
 ast* G_AST;
 

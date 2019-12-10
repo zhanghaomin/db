@@ -1,22 +1,21 @@
+#include "ast.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+extern int yyparse();
+extern void yyrestart(FILE* input_file);
 
 int main(int argc, char const* argv[])
 {
-    char cmd[1024] = { 0 };
-    char* row;
     printf("cmd > ");
     fflush(stdout);
-    fgets(cmd, 1024, stdin);
+    yyrestart(stdin);
 
-    if (strncmp("select", cmd, 6) == 0) {
-        printf("select\n");
-    } else if (strncmp("insert", cmd, 6) == 0) {
-        row = cmd + 6;
-        while (row[0] == ' ') {
-            row++;
-        }
-        printf("insert row: %s\n", row);
+    while (yyparse() == 0) {
+        print_ast(G_AST, 0);
+        printf("cmd > ");
+        fflush(stdout);
     }
 
     return 0;

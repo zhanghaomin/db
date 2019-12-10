@@ -4,12 +4,7 @@
 #define PAGE_SIZE 4096
 #define MAX_PAGE_CNT_P_TABLE 4096
 
-typedef enum {
-    INT,
-    DOUBLE,
-    CHAR,
-    VARCHAR
-} col_type;
+#include "ast.h"
 
 typedef struct {
     col_type type;
