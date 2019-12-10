@@ -1,7 +1,6 @@
 .DS_Store
 a.out
 .vscode/settings.json
-*.txt
 lex.yy.c
 parser.tab.c
 parser.tab.h
