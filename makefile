@@ -1,7 +1,7 @@
 tmp = parser.tab.c lex.yy.c
 
 db: $(tmp)
-	gcc -g -o db $(tmp) ast.c util.c cli.c
+	gcc -Wall -W -g -o db $(tmp) ast.c util.c cli.c
 
 parser.tab.c: 
 	bison -d parser.y
