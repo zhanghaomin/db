@@ -3,16 +3,26 @@
 
 #include "db_val.h"
 
+#define CHILD_CNT_OFFSET 10
+#define MAX_CHILD_CNT 1 << 15
+#define child_is_unlimited(_kind) ((_kind) >> CHILD_CNT_OFFSET == MAX_CHILD_CNT)
+#define max_child_cnt(_kind) ((_kind) >> CHILD_CNT_OFFSET)
+
 typedef enum {
-    AST_VAL,
-    AST_SELECT,
-    AST_EXPECT_COLS,
-    AST_TABLE,
-    AST_WHERE_NODE,
+    // 0 child
+    AST_VAL = 0 << CHILD_CNT_OFFSET,
+    // 1 child
+    AST_TABLE = 1 << CHILD_CNT_OFFSET,
+    // 2 child
+    AST_WHERE_NODE = 2 << CHILD_CNT_OFFSET,
     AST_WHERE_LEAF,
     AST_COL_FMT,
+    AST_CREATE,
+    // 3 child
+    AST_SELECT = 3 << CHILD_CNT_OFFSET,
+    // unlimited
+    AST_EXPECT_COLS = MAX_CHILD_CNT << CHILD_CNT_OFFSET,
     AST_COL_FMT_LIST,
-    AST_CREATE
 } ast_kind;
 
 typedef struct _ast {
@@ -56,7 +66,7 @@ typedef enum {
 
 ast* create_ast(int children, ast_kind kind, int attr, ...);
 void ast_add_child(ast* a, ast* child);
-void print_ast(ast* a, int space_count);
+void print_ast(ast* a, int step, int last);
 
 ast* G_AST;
 

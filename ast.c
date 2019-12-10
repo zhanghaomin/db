@@ -1,17 +1,33 @@
 #include "ast.h"
+#include "assert.h"
 #include "util.h"
 #include <stdarg.h>
 
-void print_space(int space_count)
+static int lasts[20] = { 0 };
+
+void print_space(int step, int last)
 {
-    for (int i = 0; i < space_count; i++) {
-        printf(" ");
+    for (int i = 1; i <= step; i++) {
+        if (i == step) {
+            if (last) {
+                lasts[i] = last;
+                printf("`-- ");
+            } else {
+                lasts[i] = last;
+                printf("|-- ");
+            }
+        } else {
+            if (lasts[i]) {
+                printf("    ");
+            } else {
+                printf("|   ");
+            }
+        }
     }
 }
 
-void print_kind(int kind, int space_count)
+void print_kind(int kind)
 {
-    print_space(space_count);
     switch (kind) {
     case AST_SELECT:
         printf("AST_SELECT:\n");
@@ -45,10 +61,8 @@ void print_kind(int kind, int space_count)
     }
 }
 
-void print_attr(int attr, int space_count)
+void print_attr(int attr)
 {
-    print_space(space_count);
-
     if (attr == -1) {
         printf("attr: none\n");
         return;
@@ -75,10 +89,9 @@ void print_attr(int attr, int space_count)
     // }
 }
 
-void print_ast_val(ast_val* av, int space_count)
+void print_ast_val(ast_val* av, int step)
 {
-    print_kind(av->kind, space_count);
-    print_space(space_count + 4);
+    print_space(step + 1, 1);
     printf("val: ");
 
     if (av->val->type == INTEGER) {
@@ -90,20 +103,27 @@ void print_ast_val(ast_val* av, int space_count)
     }
 }
 
-void print_ast(ast* a, int space_count)
+void print_ast(ast* a, int step, int last)
 {
+    if (a == NULL) {
+        return;
+    }
+
+    print_space(step, last);
+    print_kind(a->kind);
+
     if (a->kind == AST_VAL) {
-        print_ast_val((ast_val*)a, space_count);
+        print_ast_val((ast_val*)a, step);
         return;
     } else {
-        print_kind(a->kind, space_count);
-        print_attr(a->attr, space_count + 4);
-        print_space(space_count + 4);
+        print_space(step + 1, 0);
+        print_attr(a->attr);
+        print_space(step + 1, 0);
         printf("children: %d\n", a->children);
-        print_space(space_count + 4);
+        print_space(step + 1, 1);
         printf("child: \n");
         for (int i = 0; i < a->children; i++) {
-            print_ast(a->child[i], space_count + 8);
+            print_ast(a->child[i], step + 2, i == a->children - 1);
         }
     }
 }
@@ -113,9 +133,14 @@ ast* create_ast(int children, ast_kind kind, int attr, ...)
     va_list ap;
     ast* a;
     a = smalloc(sizeof(ast));
-    a->children = children;
     a->kind = kind;
     a->attr = attr;
+
+    if (child_is_unlimited(kind)) {
+        a->children = children;
+    } else {
+        a->children = max_child_cnt(kind);
+    }
 
     if (children == 0) {
         a->child = NULL;
@@ -135,6 +160,8 @@ ast* create_ast(int children, ast_kind kind, int attr, ...)
 
 void ast_add_child(ast* a, ast* child)
 {
+    assert(child_is_unlimited(a->kind));
+
     if (a->child == NULL) {
         a->child = smalloc(sizeof(ast*) * ++a->children);
     } else {

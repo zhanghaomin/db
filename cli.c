@@ -13,7 +13,7 @@ int main(int argc, char const* argv[])
     yyrestart(stdin);
 
     while (yyparse() == 0) {
-        print_ast(G_AST, 0);
+        print_ast(G_AST, 1, 1);
         printf("cmd > ");
         fflush(stdout);
     }
