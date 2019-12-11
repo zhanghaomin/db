@@ -6,8 +6,15 @@
 extern int yyparse();
 extern void yyrestart(FILE* input_file);
 
+// void do_cmd(Ast* a)
+// {
+
+// }
+
 int main(int argc, char const* argv[])
 {
+    (void)argv;
+    (void)argc;
     printf("cmd > ");
     fflush(stdout);
     yyrestart(stdin);

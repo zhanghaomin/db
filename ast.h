@@ -1,73 +1,82 @@
 #ifndef _AST_H
 #define _AST_H
 
-#include "db_val.h"
+#include "db.h"
 
 #define CHILD_CNT_OFFSET 10
 #define MAX_CHILD_CNT 1 << 15
 #define child_is_unlimited(_kind) ((_kind) >> CHILD_CNT_OFFSET == MAX_CHILD_CNT)
 #define max_child_cnt(_kind) ((_kind) >> CHILD_CNT_OFFSET)
+#define get_kind_offset(_kind) ((_kind) - (max_child_cnt(_kind) << CHILD_CNT_OFFSET))
+#define get_kind_name(_kind) ({                                                   \
+    const char* _name;                                                            \
+    if (child_is_unlimited(_kind)) {                                              \
+        _name = UnlimitedKindNameMap[get_kind_offset(_kind)];                     \
+    } else {                                                                      \
+        _name = LimitedKindNameMap[max_child_cnt(_kind)][get_kind_offset(_kind)]; \
+    }                                                                             \
+    _name;                                                                        \
+})
+
+static const char* LimitedKindNameMap[][1024] = {
+    { "AST_VAL" }, // 0 child
+    { "AST_TABLE", "AST_ORDER_BY_COL" }, // 1 child
+    { "AST_WHERE_NODE", "AST_WHERE_LEAF", "AST_COL_FMT", "AST_CREATE", "AST_INSERT", "AST_LIMIT" }, // 2 child
+    {}, // 3 child
+    {}, // 4 child
+    { "AST_SELECT" }, // 5 child
+};
+
+static const char* UnlimitedKindNameMap[] = { "AST_EXPECT_COLS", "AST_COL_FMT_LIST", "AST_INSERT_ROW_LIST", "AST_INSERT_VAL_LIST", "AST_ORDER_BY" };
 
 typedef enum {
     // 0 child
     AST_VAL = 0 << CHILD_CNT_OFFSET,
     // 1 child
     AST_TABLE = 1 << CHILD_CNT_OFFSET,
+    AST_ORDER_BY_COL,
     // 2 child
     AST_WHERE_NODE = 2 << CHILD_CNT_OFFSET,
     AST_WHERE_LEAF,
     AST_COL_FMT,
     AST_CREATE,
-    // 3 child
-    AST_SELECT = 3 << CHILD_CNT_OFFSET,
+    AST_INSERT,
+    AST_LIMIT,
+    // 5 child
+    AST_SELECT = 5 << CHILD_CNT_OFFSET,
     // unlimited
     AST_EXPECT_COLS = MAX_CHILD_CNT << CHILD_CNT_OFFSET,
     AST_COL_FMT_LIST,
-} ast_kind;
+    AST_INSERT_ROW_LIST,
+    AST_INSERT_VAL_LIST,
+    AST_ORDER_BY
+} AstKind;
 
-typedef struct _ast {
-    ast_kind kind;
+typedef struct _Ast {
+    AstKind kind;
     int attr;
     int children;
-    struct _ast** child;
-} ast;
+    struct _Ast** child;
+} Ast;
 
 typedef struct {
-    ast_kind kind;
-    db_val* val;
-} ast_val;
-
-typedef enum {
-    C_INT,
-    C_DOUBLE,
-    C_CHAR,
-    C_VARCHAR
-} col_type;
-
-typedef enum {
-    EQ, // =
-    GT, // >
-    LT, // <
-    GTE, // >=
-    LTE, // <=
-    NEQ, // != <>
-    W_AND, // and
-    W_OR // or
-} cmp_op;
+    AstKind kind;
+    DBVal* val;
+} AstVal;
 
 #define create_val_ast(_t, _v) ({         \
-    ast_val* _va;                         \
-    _va = smalloc(sizeof(ast_val));       \
+    AstVal* _va;                          \
+    _va = smalloc(sizeof(AstVal));        \
     _va->kind = AST_VAL;                  \
-    _va->val = smalloc(sizeof(db_val));   \
+    _va->val = smalloc(sizeof(DBVal));    \
     _va->val = DB_VAl_##_t(_va->val, _v); \
-    (ast*)_va;                            \
+    _va;                                  \
 })
 
-ast* create_ast(int children, ast_kind kind, int attr, ...);
-void ast_add_child(ast* a, ast* child);
-void print_ast(ast* a, int step, int last);
+Ast* create_ast(int children, AstKind kind, int attr, ...);
+Ast* ast_add_child(Ast* a, Ast* child);
+void print_ast(Ast* a, int step, int last);
 
-ast* G_AST;
+Ast* G_AST;
 
 #endif

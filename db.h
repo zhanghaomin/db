@@ -1,21 +1,39 @@
-#ifndef _DB_VAL_H
-#define _DB_VAL_H
+#ifndef _DB_H
+#define _DB_H
 #include <string.h>
 
 typedef enum {
     INTEGER,
     DOUBLE,
     STRING
-} db_val_type;
+} DBValType;
 
 typedef struct {
-    db_val_type type;
+    DBValType type;
     union {
         int num;
         double d;
         char* str;
     } val;
-} db_val;
+} DBVal;
+
+typedef enum {
+    C_INT,
+    C_DOUBLE,
+    C_CHAR,
+    C_VARCHAR
+} ColType;
+
+typedef enum {
+    EQ, // =
+    GT, // >
+    LT, // <
+    GTE, // >=
+    LTE, // <=
+    NEQ, // != <>
+    W_AND, // and
+    W_OR // or
+} WhereOP;
 
 #define DB_VAl_INTEGER(_v, _i) ({ \
     _v->type = INTEGER;           \

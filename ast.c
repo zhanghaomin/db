@@ -26,41 +26,6 @@ void print_space(int step, int last)
     }
 }
 
-void print_kind(int kind)
-{
-    switch (kind) {
-    case AST_SELECT:
-        printf("AST_SELECT:\n");
-        break;
-    case AST_EXPECT_COLS:
-        printf("AST_EXPECT_COLS:\n");
-        break;
-    case AST_VAL:
-        printf("AST_VAL:\n");
-        break;
-    case AST_WHERE_LEAF:
-        printf("AST_WHERE_LEAF:\n");
-        break;
-    case AST_WHERE_NODE:
-        printf("AST_WHERE_NODE:\n");
-        break;
-    case AST_TABLE:
-        printf("AST_TABLE:\n");
-        break;
-    case AST_COL_FMT:
-        printf("AST_COL_FMT:\n");
-        break;
-    case AST_COL_FMT_LIST:
-        printf("AST_COL_FMT_LIST:\n");
-        break;
-    case AST_CREATE:
-        printf("AST_CREATE:\n");
-        break;
-    default:
-        break;
-    }
-}
-
 void print_attr(int attr)
 {
     if (attr == -1) {
@@ -69,27 +34,9 @@ void print_attr(int attr)
     }
 
     printf("attr: %d\n", attr);
-    // printf("")
-    // switch (attr) {
-    // case EQ:
-    //     printf("EQ\n");
-    //     break;
-    // case W_AND:
-    //     printf("AND\n");
-    //     break;
-    // case W_OR:
-    //     printf("OR\n");
-    //     break;
-    // case -1:
-    //     printf("none\n");
-    //     break;
-    // default:
-    //     printf("%d\n", attr);
-    //     break;
-    // }
 }
 
-void print_ast_val(ast_val* av, int step)
+void print_ast_val(AstVal* av, int step)
 {
     print_space(step + 1, 1);
     printf("val: ");
@@ -103,17 +50,17 @@ void print_ast_val(ast_val* av, int step)
     }
 }
 
-void print_ast(ast* a, int step, int last)
+void print_ast(Ast* a, int step, int last)
 {
     if (a == NULL) {
         return;
     }
 
     print_space(step, last);
-    print_kind(a->kind);
+    printf("%s:\n", get_kind_name(a->kind));
 
     if (a->kind == AST_VAL) {
-        print_ast_val((ast_val*)a, step);
+        print_ast_val((AstVal*)a, step);
         return;
     } else {
         print_space(step + 1, 0);
@@ -128,11 +75,11 @@ void print_ast(ast* a, int step, int last)
     }
 }
 
-ast* create_ast(int children, ast_kind kind, int attr, ...)
+Ast* create_ast(int children, AstKind kind, int attr, ...)
 {
     va_list ap;
-    ast* a;
-    a = smalloc(sizeof(ast));
+    Ast* a;
+    a = smalloc(sizeof(Ast));
     a->kind = kind;
     a->attr = attr;
 
@@ -147,26 +94,27 @@ ast* create_ast(int children, ast_kind kind, int attr, ...)
         return a;
     }
 
-    a->child = smalloc(sizeof(ast*) * children);
+    a->child = smalloc(sizeof(Ast*) * children);
     va_start(ap, attr);
 
     for (int i = 0; i < children; i++) {
-        a->child[i] = va_arg(ap, ast*);
+        a->child[i] = va_arg(ap, Ast*);
     }
 
     va_end(ap);
     return a;
 }
 
-void ast_add_child(ast* a, ast* child)
+Ast* ast_add_child(Ast* a, Ast* child)
 {
     assert(child_is_unlimited(a->kind));
 
     if (a->child == NULL) {
-        a->child = smalloc(sizeof(ast*) * ++a->children);
+        a->child = smalloc(sizeof(Ast*) * ++a->children);
     } else {
-        a->child = realloc(a->child, ++a->children * sizeof(ast*));
+        a->child = realloc(a->child, ++a->children * sizeof(Ast*));
     }
 
     a->child[a->children - 1] = child;
+    return a;
 }

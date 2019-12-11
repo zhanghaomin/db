@@ -1,4 +1,4 @@
-%option noyywrap nodefault noyylineno case-insensitive 
+%option noyywrap nodefault noyylineno case-insensitive nounput noinput
 
 %{
 #include "ast.h"
@@ -11,13 +11,18 @@ static char* escape_str(char *s, int s_len, char c);
 %%
 "select" {return T_SELECT;}
 "insert" {return T_INSERT;}
+"create" {return T_CREATE;}
+"into" {return T_INTO;}
+"values" {return T_VALUES;}
 "update" {return T_UPDATE;}
 "delete" {return T_DELETE;}
 "where" {return T_WHERE;}
 "from" {return T_FROM;}
 "and" {return T_AND;}
-"create" {return T_CREATE;}
 "table" {return T_TABLE;}
+"order" {return T_ORDER;}
+"by" {return T_BY;}
+"limit" {return T_LIMIT;}
 "or" {return T_OR;}
 "=" {return T_EQ;}
 "int" {return T_INT;}
@@ -31,15 +36,22 @@ static char* escape_str(char *s, int s_len, char c);
 ">=" {return T_GTE;}
 
 [a-zA-Z_][a-zA-Z0-9_]* {
-    yylval.ast = create_val_ast(STRING, yytext);
+    yylval.ast = (Ast *)create_val_ast(STRING, yytext);
     return T_IDENTIFIER;
 }
-[0-9]+ { 
-    yylval.ast = create_val_ast(INTEGER, atoi(yytext));
+`[a-zA-Z_][a-zA-Z0-9_]*`|'[a-zA-Z_][a-zA-Z0-9_]*'|\"[a-zA-Z_][a-zA-Z0-9_]*\" {
+    char *s;
+    s = strndup(yytext+1, yyleng-2);
+    yylval.ast = (Ast *)create_val_ast(STRING, s);
+    free(s);
+    return T_IDENTIFIER;
+}
+-?[0-9]+ { 
+    yylval.ast = (Ast *)create_val_ast(INTEGER, atoi(yytext));
     return T_NUMBER;
 }
 '([^']|\\')+'|\"([^"]|\\\")+\"|`([^`]|\\`)+` {
-    yylval.ast = create_val_ast(STRING, escape_str(yytext+1, yyleng-2, yytext[0]));
+    yylval.ast = (Ast *)create_val_ast(STRING, escape_str(yytext+1, yyleng-2, yytext[0]));
     return T_LITERAL;
 }
 [ \t\n] { /* skip */}
