@@ -26,7 +26,7 @@ int yyerror(char *s);
     int num;
     Ast* ast;
 }
-// INSERT INTO Persons VALUES ('Gates', 'Bill', 'Xuanwumen 10', 'Beijing');
+
 %%
 topstmt:
       select_stmt ';' { $$ = $1; G_AST = $$; YYACCEPT;}
@@ -51,6 +51,7 @@ insert_value_list_stmt:
 insert_value:
       T_NUMBER { $$ = $1; }
     | T_LITERAL { $$ = $1; }
+    | T_IDENTIFIER { $$ = $1; }
     ;
 
 create_table_stmt:
@@ -115,6 +116,7 @@ where:
 where_clause:
       T_IDENTIFIER compare T_NUMBER { $$ = create_ast(2, AST_WHERE_LEAF, $2, $1, $3); }
     | T_IDENTIFIER compare T_LITERAL { $$ = create_ast(2, AST_WHERE_LEAF, $2, $1, $3); }
+    | T_IDENTIFIER compare T_IDENTIFIER { $$ = create_ast(2, AST_WHERE_LEAF, $2, $1, $3); }
     | '(' where_clause ')' { $$ = $2; }
     | where_clause T_AND where_clause { $$ = create_ast(2, AST_WHERE_NODE, W_AND, $1, $3); }
     | where_clause T_OR where_clause { $$ = create_ast(2, AST_WHERE_NODE, W_OR, $1, $3); }
@@ -140,6 +142,6 @@ int yyerror(char *s)
 {
     extern int yylineno;
     extern char* yytext;
-    printf("line %d: %s occur near '%s'\n", yylineno, s, yytext);
+    printf("line %d: %s occur near %s\n", yylineno, s, yytext);
     return 1;
 }

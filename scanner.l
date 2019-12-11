@@ -34,6 +34,7 @@ static char* escape_str(char *s, int s_len, char c);
 "<=" {return T_LTE;}
 ">" {return T_GT;}
 ">=" {return T_GTE;}
+";"|"("|")" {return *yytext;}
 
 [a-zA-Z_][a-zA-Z0-9_]* {
     yylval.ast = (Ast *)create_val_ast(STRING, yytext);
@@ -50,12 +51,11 @@ static char* escape_str(char *s, int s_len, char c);
     yylval.ast = (Ast *)create_val_ast(INTEGER, atoi(yytext));
     return T_NUMBER;
 }
-'([^']|\\')+'|\"([^"]|\\\")+\"|`([^`]|\\`)+` {
+'([^']|\\')+'|\"([^"]|\\\")+\" {
     yylval.ast = (Ast *)create_val_ast(STRING, escape_str(yytext+1, yyleng-2, yytext[0]));
     return T_LITERAL;
 }
 [ \t\n] { /* skip */}
-. {return *yytext;}
 %%
 
 static char* escape_str(char* s, int s_len, char c)

@@ -7,7 +7,7 @@
 #include "ast.h"
 
 typedef struct {
-    col_type type;
+    ColType type;
     void* data;
     int len;
 } col_value;
@@ -16,7 +16,7 @@ typedef col_value* result_row;
 typedef result_row* result_rows;
 
 typedef struct {
-    col_type type; // 字段类型
+    ColType type; // 字段类型
     int is_dynamic; // 是否变长
     int len; // 字段长度
 } col_fmt;
@@ -68,50 +68,7 @@ typedef struct {
     int page_row_num; // 当前指向page中第几行
 } cursor;
 
-// typedef struct {
-//     int type;
-//     val_ast* expect_cols;
-//     int expect_cols_count;
-// } select_expect_cols_ast;
-
-// typedef enum {
-//     INTEGER,
-//     FLOAT,
-//     STRING
-// } input_literal_type;
-
-// typedef struct {
-//     input_literal_type type;
-//     void* data;
-//     int len;
-// } input_literal;
-
-// struct _where_stmt {
-//     int is_leaf; // leaf or node
-//     union {
-//         cmp_op compare; // leaf
-//         logic_op logic; // node
-//     } op;
-//     union {
-//         struct _where_stmt* stmt; // node
-//         input_literal* val; // leaf
-//     } children[2];
-// };
-
-// typedef struct {
-//     int type;
-//     select_expect_cols_ast* expect_cols;
-//     char* table;
-//     where_ast* where;
-// } select_ast;
-
-// typedef struct _where_stmt where_stmt;
-
 void unserialize_row(void* row, row_fmt* rf, col_value** cvs);
 void destory_col_val(col_value* cv);
-// int serialize_row(void* store, row_fmt* rf, col_value* cvs, int col_count);
-// col_value* unserialize_row(void* row, row_fmt* rf, int* cols_count);
-// void destory_col_vals(col_value* cvs, int cols_count);
-// void insert_row(table* t, pager* p, col_value* cvs, int col_count);
 
 #endif
