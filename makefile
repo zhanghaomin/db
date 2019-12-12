@@ -1,7 +1,11 @@
 tmp = parser.tab.c lex.yy.c
+common = ht.c util.c ast.c 
 
 db: $(tmp)
-	gcc -Wall -W -g -o db $(tmp) ast.c util.c cli.c
+	gcc -Wall -W -g -o db $(tmp) $(common) cli.c
+
+test: $(tmp)
+	gcc -Wall -W -g -o table_test table_test.c table.c $(common) $(tmp) && ./table_test
 
 parser.tab.c: 
 	bison -d parser.y
@@ -9,4 +13,4 @@ lex.yy.c:
 	flex scanner.l
 
 clean:
-	rm db parser.tab.h $(tmp)
+	rm -f db parser.tab.h $(tmp)

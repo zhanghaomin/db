@@ -1,7 +1,11 @@
 .DS_Store
 a.out
-.vscode/settings.json
+.vscode/
 lex.yy.c
 parser.tab.c
 parser.tab.h
 db
+*.dSYM/
+*_test
+*.dat
+1.txt

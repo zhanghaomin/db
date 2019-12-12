@@ -5,44 +5,36 @@
 #define MAX_PAGE_CNT_P_TABLE 4096
 
 #include "ast.h"
+#include "ht.h"
 
-typedef struct {
-    ColType type;
-    void* data;
-    int len;
-} col_value;
+// typedef struct {
+//     ColType type;
+//     void* data;
+//     int len;
+// } ColValue;
 
-typedef col_value* result_row;
-typedef result_row* result_rows;
+// typedef ColValue* result_row;
+// typedef result_row* result_rows;
 
 typedef struct {
     ColType type; // 字段类型
     int is_dynamic; // 是否变长
     int len; // 字段长度
-} col_fmt;
+} ColFmt;
 
 typedef struct {
     int row_len;
-} row_header;
+} RowHeader;
 
 typedef struct {
     char** origin_cols_name; // 原始字段数组, 定义时顺序
     int origin_cols_count; // 原始字段数量
-    col_fmt* cols_fmt; // 字段格式数组, 与上面下标对应
+    ColFmt* cols_fmt; // 字段格式数组, 与上面下标对应
     char** static_cols_name; // 定长字段数组
     char** dynamic_cols_name; // 不定长字段数组
     int static_cols_count; // 定长字段数量
     int dynamic_cols_count; // 不定长字段数量
-} row_fmt;
-
-typedef struct {
-    char* name;
-    int data_fd;
-    row_fmt* row_fmt;
-    int max_page_num; // 最大叶号
-    int row_count; // 表里数据总行数
-    int free_map[MAX_PAGE_CNT_P_TABLE]; // 每页的空闲空间
-} table;
+} RowFmt;
 
 typedef struct {
     struct {
@@ -51,24 +43,40 @@ typedef struct {
         int tail; // 相对于page.data
     } header;
     char data[];
-} page;
+} Page;
 
 typedef struct {
-    page* pages[MAX_PAGE_CNT_P_TABLE]; // 表里的page集合
-    table* table;
-} pager;
+    Page* pages[MAX_PAGE_CNT_P_TABLE]; // 表里的page集合
+} Pager;
 
 typedef struct {
-    pager* pager;
-    table* table;
-    // row_fmt* row_fmt;
-    page* page;
+    HashTable* tables;
+} DB;
+
+typedef struct {
+    char* name;
+    int data_fd;
+    RowFmt* row_fmt;
+    Pager* pager;
+    int max_page_num; // 最大叶号
+    int row_count; // 表里数据总行数
+    int free_map[MAX_PAGE_CNT_P_TABLE]; // 每页的空闲空间
+} Table;
+
+typedef struct {
+    Pager* pager;
+    Table* table;
+    Page* page;
     int offset; // 相对于page.data
     int row_num; // 当前指向第几行
     int page_row_num; // 当前指向page中第几行
-} cursor;
+} Cursor;
 
-void unserialize_row(void* row, row_fmt* rf, col_value** cvs);
-void destory_col_val(col_value* cv);
+DB* db_init(HtValueDtor table_dtor);
+Table* open_table(DB* d, char* name);
+Table* create_table(DB* d, Ast* a);
+int insert_row(DB* d, Ast* a);
+// void unserialize_row(void* row, RowFmt* rf, ColValue** cvs);
+// void destory_col_val(ColValue* cv);
 
 #endif

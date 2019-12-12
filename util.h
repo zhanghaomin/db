@@ -11,6 +11,7 @@
 #define sys_err(notice) _sys_err(notice, __FILE__, __LINE__)
 #define smalloc(size) _smalloc(size, __FILE__, __LINE__)
 #define scalloc(size, num) _scalloc(size, num, __FILE__, __LINE__)
+#define UNUSED __attribute__((unused))
 
 extern void _sys_err(char* notice, char* file, int lineno);
 extern void* _smalloc(size_t size, char* file, int lineno);

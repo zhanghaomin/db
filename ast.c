@@ -1,6 +1,6 @@
 #include "ast.h"
-#include "assert.h"
 #include "util.h"
+#include <assert.h>
 #include <stdarg.h>
 
 static int lasts[20] = { 0 };

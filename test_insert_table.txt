@@ -1,0 +1,1 @@
+INSERT INTO `txzj_miniapp_white_list` VALUES (1, 6.83783, '爱米狗旗舰店', 'https://m.duanqu.com?_ariver_appid=3000000002135593');
