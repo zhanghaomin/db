@@ -108,13 +108,7 @@ Ast* create_ast(int children, AstKind kind, int attr, ...)
 Ast* ast_add_child(Ast* a, Ast* child)
 {
     assert(child_is_unlimited(a->kind));
-
-    if (a->child == NULL) {
-        a->child = smalloc(sizeof(Ast*) * ++a->children);
-    } else {
-        a->child = realloc(a->child, ++a->children * sizeof(Ast*));
-    }
-
+    a->child = realloc(a->child, ++a->children * sizeof(Ast*));
     a->child[a->children - 1] = child;
     return a;
 }
