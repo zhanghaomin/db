@@ -1,10 +1,21 @@
 #include "table.h"
 #include "util.h"
 #include <assert.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+Cursor* cursor_init(Table* t)
+{
+    Cursor* c;
+    c = scalloc(sizeof(Cursor), 1);
+    c->table = t;
+    c->pager = t->pager;
+    cursor_rewind(c);
+    return c;
+}
 
 void* cursor_value(Cursor* c)
 {
@@ -91,62 +102,138 @@ void cursor_rewind(Cursor* c)
     c->row_num = 0;
 }
 
-void println_table_col_name(Table* t)
+void println_row_line(int* padding, int pn)
 {
-    for (int i = 0; i < t->row_fmt->origin_cols_count; i++) {
-        printf("%s\t", t->row_fmt->origin_cols_name[i]);
+    int n = 0;
+    for (int i = 0; i < pn; i++) {
+        n += padding[i];
+    }
+
+    for (int i = 0; i < n + pn * 2 + 1; i++) {
+        printf("-");
     }
 
     printf("\n");
 }
 
-// void println_row(col_value** cvs, int cvs_len)
-// {
-//     for (int i = 0; i < cvs_len; i++) {
-//         if (cvs[i]->type == VARCHAR || cvs[i]->type == CHAR) {
-//             printf("%s\t", cvs[i]->data);
-//         } else if (cvs[i]->type == INT) {
-//             printf("%d\t", *(int*)(cvs[i]->data));
-//         } else if (cvs[i]->type == DOUBLE) {
-//             printf("%f\t", *(double*)(cvs[i]->data));
-//         }
-//     }
+void println_table_col_name(Table* t, int* padding)
+{
+    int len = 0;
 
-//     printf("\n");
-// }
+    for (int i = 0; i < t->row_fmt->origin_cols_count; i++) {
+        if (i == 0) {
+            printf("| ");
+        }
+        len = strlen(t->row_fmt->origin_cols_name[i]);
+        printf("%s", t->row_fmt->origin_cols_name[i]);
+        for (int j = 0; j < padding[i] - len; j++) {
+            printf(" ");
+        }
+        printf("| ");
+    }
 
-// void traverse_table(Cursor* c)
-// {
-//     col_value** cvs;
-//     int cvs_len;
+    printf("\n");
+}
 
-//     cursor_rewind(c);
-//     println_table_col_name(c->table);
-//     cvs_len = c->table->row_fmt->origin_cols_count;
-//     cvs = smalloc(cvs_len * sizeof(col_value*));
+void println_row(QueryResult* qr, int qr_len, int* padding)
+{
+    int len = 0;
+    char s[1024];
 
-//     for (int i = 0; i < cvs_len; i++) {
-//         cvs[i] = smalloc(sizeof(col_value));
-//     }
+    for (int i = 0; i < qr_len; i++) {
+        if (i == 0) {
+            printf("| ");
+        }
 
-//     while (!cursor_is_end(c)) {
+        if (qr[i]->type == C_VARCHAR || qr[i]->type == C_CHAR) {
+            len = strlen((char*)(qr[i]->data));
+            printf("%s", (char*)(qr[i]->data));
+        } else if (qr[i]->type == C_INT) {
+            itoa(*(int*)(qr[i]->data), s, 10);
+            len = strlen(s);
+            printf("%d", *(int*)(qr[i]->data));
+        } else if (qr[i]->type == C_DOUBLE) {
+            itoa(*(double*)(qr[i]->data), s, 10);
+            len = strlen(s);
+            printf("%f", *(double*)(qr[i]->data));
+        }
 
-//         unserialize_row(cursor_value(c), c->table->row_fmt, cvs);
-//         println_row(cvs, cvs_len);
+        for (int j = 0; j < padding[i] - len; j++) {
+            printf(" ");
+        }
 
-//         for (int i = 0; i < cvs_len; i++) {
-//             destory_col_val(cvs[i]);
-//         }
+        printf("| ");
+    }
 
-//         cursor_next(c);
-//     }
+    printf("\n");
+}
 
-//     for (int i = 0; i < cvs_len; i++) {
-//         free(cvs[i]);
-//     }
-// }
+void println_rows(Table* t, QueryResultList* qrl, int qrl_len, int qr_len)
+{
+    int* paddings;
+    paddings = scalloc(sizeof(int), qr_len);
+    char s[1024];
 
-void* find_free_space(Table* t, int size)
+    for (int i = 0; i < qrl_len; i++) {
+        for (int j = 0; j < qr_len; j++) {
+            if (qrl[i][j]->type == C_VARCHAR || qrl[i][j]->type == C_CHAR) {
+                if (paddings[j] < (int)strlen(qrl[i][j]->data)) {
+                    paddings[j] = (int)strlen(qrl[i][j]->data);
+                }
+            } else if (qrl[i][j]->type == C_INT || qrl[i][j]->type == C_DOUBLE) {
+                if (qrl[i][j]->type == C_INT) {
+                    itoa(*(int*)(qrl[i][j]->data), s, 10);
+                } else {
+                    itoa(*(double*)(qrl[i][j]->data), s, 10);
+                }
+                if (paddings[j] < (int)strlen(s)) {
+                    paddings[j] = (int)strlen(s);
+                }
+            }
+        }
+    }
+
+    for (int i = 0; i < qr_len; i++) {
+        paddings[i] += 3;
+    }
+
+    println_row_line(paddings, qr_len);
+    println_table_col_name(t, paddings);
+    println_row_line(paddings, qr_len);
+    for (int i = 0; i < qrl_len; i++) {
+        println_row(qrl[i], qr_len, paddings);
+        println_row_line(paddings, qr_len);
+    }
+}
+
+void traverse_table(Cursor* c)
+{
+    QueryResultList* qrl;
+    int qr_len;
+
+    cursor_rewind(c);
+    qr_len = c->table->row_fmt->origin_cols_count;
+    qrl = NULL;
+
+    int i = 0;
+
+    while (!cursor_is_end(c)) {
+        qrl = realloc(qrl, (i + 1) * sizeof(QueryResult*));
+        qrl[i] = scalloc(qr_len * sizeof(QueryResultVal*), 1);
+
+        for (int j = 0; j < qr_len; j++) {
+            qrl[i][j] = smalloc(sizeof(QueryResultVal));
+        }
+
+        unserialize_row(cursor_value(c), c->table->row_fmt, qrl[i]);
+        cursor_next(c);
+        i++;
+    }
+
+    println_rows(c->table, qrl, i, qr_len);
+}
+
+Page* find_free_page(Table* t, int size)
 {
     Page* find_page;
     int i = 0;
@@ -154,12 +241,17 @@ void* find_free_space(Table* t, int size)
     for (; i <= t->max_page_num; i++) {
         if (size <= t->free_map[i]) {
             find_page = get_page(t, i);
-            return (void*)(find_page->data + find_page->header.tail);
+            return find_page;
         }
     }
 
     // never happen
     exit(-1);
+}
+
+static void* get_page_tail(Page* p)
+{
+    return (void*)(p->data + p->header.tail);
 }
 
 ColFmt* get_col_fmt_by_col_name(RowFmt* rf, char* col_name)
@@ -219,21 +311,19 @@ int cacl_serialized_row_len(RowFmt* rf, Ast* val_list)
     int result = 0;
     ColFmt* cf;
 
-    result += sizeof(int);
+    result += sizeof(RowHeader);
 
     for (int i = 0; i < val_list->children; i++) {
         cf = &rf->cols_fmt[i];
 
-        if (cf == NULL) {
-            return -1;
-        }
-
-        if (cf->is_dynamic) { // 动态属性需要额外空间储存位置
+        if (cf->is_dynamic) { // 动态属性需要额外空间储存偏移量
             result += sizeof(int);
+            result += AST_VAL_LEN(val_list->child[i]);
+        } else { // 静态属性定长
+            result += cf->len;
         }
 
         result += sizeof(int);
-        result += AST_VAL_LEN(val_list->child[i]);
     }
 
     return result;
@@ -261,6 +351,7 @@ static inline void copy_ast_val(void* dest, AstVal* a)
                                                   |________________________________________________________________________________________________________________________________|
      偏移量都是相对header的
 */
+// 4 + 4 + 4 + 4 + 8 + 4 + 255 + 4 + 52
 int serialize_row(void* store, RowFmt* rf, Ast* val_list)
 {
     assert(val_list->kind == AST_INSERT_VAL_LIST);
@@ -287,9 +378,10 @@ int serialize_row(void* store, RowFmt* rf, Ast* val_list)
             memcpy(store, &val_len, sizeof(int));
             store += sizeof(int);
             copy_ast_val(store, val);
-            store += val_len;
+            // important: 静态字段固定长度
+            store += cf->len;
             rh.row_len += sizeof(int);
-            rh.row_len += val_len;
+            rh.row_len += cf->len;
         }
     }
 
@@ -312,6 +404,8 @@ int serialize_row(void* store, RowFmt* rf, Ast* val_list)
         }
     }
 
+    // 长度加上自己
+    rh.row_len += sizeof(RowHeader);
     // 写入header
     memcpy(data_start - sizeof(RowHeader), &rh, sizeof(RowHeader));
     return 0;
@@ -348,55 +442,54 @@ int serialize_row(void* store, RowFmt* rf, Ast* val_list)
 /*
  * 返回反序列化好的字段数组, 顺序和定义时的一致
 */
-// void unserialize_row(void* row, RowFmt* rf, col_value** cvs)
-// {
-//     void* header;
-//     int offset, col_val_len, col_num;
+void unserialize_row(void* row, RowFmt* rf, QueryResult* qr)
+{
+    void* header;
+    int offset, col_val_len, col_num;
 
-//     // skip header
-//     row += sizeof(RowHeader);
-//     header = row;
+    // skip header
+    row += sizeof(RowHeader);
+    header = row;
 
-//     // copy dynamic col
-//     for (int i = 0; i < rf->dynamic_cols_count; i++) {
-//         // 获取动态字段偏移量
-//         memcpy(&offset, row, sizeof(int));
-//         // 获取字段长度
-//         memcpy(&col_val_len, header + offset, sizeof(int));
-//         // 获取当前字段在所有字段的序号(按定义时顺序)
-//         col_num = get_col_num_by_col_name(rf, rf->dynamic_cols_name[i]);
-//         cvs[col_num]->type = rf->cols_fmt[col_num].type;
-//         cvs[col_num]->len = col_val_len;
-//         cvs[col_num]->data = smalloc(col_val_len);
-//         // 复制字段内容
-//         memcpy(cvs[col_num]->data, header + offset + sizeof(int), col_val_len);
-//         // next offset
-//         row += sizeof(int);
-//     }
+    // 4 + 4 + 4 + 8 + 4 + 255 + 4 + 52
+    // copy dynamic col
+    for (int i = 0; i < rf->dynamic_cols_count; i++) {
+        // 获取动态字段偏移量
+        memcpy(&offset, row, sizeof(int));
+        // 获取字段长度
+        memcpy(&col_val_len, header + offset, sizeof(int));
+        // 获取当前字段在所有字段的序号(按定义时顺序)
+        col_num = get_col_num_by_col_name(rf, rf->dynamic_cols_name[i]);
+        qr[col_num]->type = rf->cols_fmt[col_num].type;
+        qr[col_num]->data = smalloc(col_val_len);
+        // 复制字段内容
+        memcpy(qr[col_num]->data, header + offset + sizeof(int), col_val_len);
+        // next offset
+        row += sizeof(int);
+    }
 
-//     // skip dynamic offset list
-//     row = header + sizeof(int) * rf->dynamic_cols_count;
+    // skip dynamic offset list
+    row = header + sizeof(int) * rf->dynamic_cols_count;
 
-//     // copy static col
-//     for (int i = 0; i < rf->static_cols_count; i++) {
-//         // 获取字段长度
-//         memcpy(&col_val_len, row, sizeof(int));
-//         // 获取当前字段在所有字段的序号(按定义时顺序)
-//         col_num = get_col_num_by_col_name(rf, rf->dynamic_cols_name[i]);
-//         cvs[col_num]->type = rf->cols_fmt[col_num].type;
-//         cvs[col_num]->len = col_val_len;
-//         cvs[col_num]->data = smalloc(col_val_len);
-//         // 复制字段内容
-//         memcpy(cvs[col_num]->data, row + sizeof(int), col_val_len);
-//         // next static record
-//         row += rf->cols_fmt[col_num].len + sizeof(int);
-//     }
-// }
+    // copy static col
+    for (int i = 0; i < rf->static_cols_count; i++) {
+        // 获取字段长度
+        memcpy(&col_val_len, row, sizeof(int));
+        // 获取当前字段在所有字段的序号(按定义时顺序)
+        col_num = get_col_num_by_col_name(rf, rf->static_cols_name[i]);
+        qr[col_num]->type = rf->cols_fmt[col_num].type;
+        qr[col_num]->data = smalloc(col_val_len);
+        // 复制字段内容
+        memcpy(qr[col_num]->data, row + sizeof(int), col_val_len);
+        // next static record
+        row += rf->cols_fmt[col_num].len + sizeof(int);
+    }
+}
 
-// void destory_col_val(col_value* cv)
-// {
-//     free(cv->data);
-// }
+void destory_query_result(QueryResultVal* qrv)
+{
+    free(qrv->data);
+}
 
 /**
  *  cvs必须跟列定义时的顺序一致, 不支持null
@@ -405,7 +498,7 @@ int insert_row(DB* d, Ast* a)
 {
     assert(a->kind == AST_INSERT);
 
-    void* store;
+    Page* page;
     int size;
     Table* t;
     Ast *table_name, *row_list, *val_list;
@@ -427,8 +520,13 @@ int insert_row(DB* d, Ast* a)
         }
 
         size = cacl_serialized_row_len(t->row_fmt, val_list);
-        store = find_free_space(t, size);
-        serialize_row(store, t->row_fmt, val_list);
+        page = find_free_page(t, size);
+        serialize_row(get_page_tail(page), t->row_fmt, val_list);
+        page->header.row_count++;
+        page->header.tail += size;
+        // printf("")
+        t->row_count++;
+        t->free_map[page->header.page_num] -= size;
     }
 
     return 1;
@@ -525,8 +623,15 @@ static void parse_fmt_list(Ast* a, RowFmt* rf)
             rf->cols_fmt[i].is_dynamic = 1;
         }
 
+        if (col_fmt->attr == C_DOUBLE) {
+            rf->cols_fmt[i].len = sizeof(double);
+        } else if (col_fmt->attr == C_INT) {
+            rf->cols_fmt[i].len = sizeof(int);
+        } else {
+            rf->cols_fmt[i].len = AST_VAL_INT(col_fmt->child[1]);
+        }
+
         rf->origin_cols_name[i] = strdup(AST_VAL_STR(col_fmt->child[0]));
-        rf->cols_fmt[i].len = AST_VAL_INT(col_fmt->child[1]);
         rf->cols_fmt[i].type = col_fmt->attr;
     }
 }

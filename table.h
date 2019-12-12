@@ -7,14 +7,19 @@
 #include "ast.h"
 #include "ht.h"
 
-// typedef struct {
-//     ColType type;
-//     void* data;
-//     int len;
-// } ColValue;
+// typedef enum {
+//     Q_INT,
+//     Q_STR,
+//     Q_DOUBLE
+// } QueryResultValType;
 
-// typedef ColValue* result_row;
-// typedef result_row* result_rows;
+typedef struct {
+    ColType type;
+    void* data;
+} QueryResultVal;
+
+typedef QueryResultVal* QueryResult;
+typedef QueryResult* QueryResultList;
 
 typedef struct {
     ColType type; // 字段类型
@@ -76,7 +81,10 @@ DB* db_init(HtValueDtor table_dtor);
 Table* open_table(DB* d, char* name);
 Table* create_table(DB* d, Ast* a);
 int insert_row(DB* d, Ast* a);
-// void unserialize_row(void* row, RowFmt* rf, ColValue** cvs);
-// void destory_col_val(ColValue* cv);
+void unserialize_row(void* row, RowFmt* rf, QueryResult* qr);
+void destory_query_result(QueryResultVal* qrv);
+void cursor_rewind(Cursor* c);
+Cursor* cursor_init(Table* t);
+void traverse_table(Cursor* c);
 
 #endif

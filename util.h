@@ -18,5 +18,6 @@ extern void* _smalloc(size_t size, char* file, int lineno);
 extern void* _scalloc(size_t size, size_t repeat, char* file, int lineno);
 extern int open_file(char* name);
 extern int strindex(char* str, char c);
+void itoa(int value, char* str, int base);
 
 #endif

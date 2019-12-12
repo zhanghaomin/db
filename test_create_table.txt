@@ -1,1 +1,1 @@
-CREATE TABLE `txzj_miniapp_white_list` (`id` int(11), `shop_id` double(20), `nick` char(255),`online_code` varchar(256));
+CREATE TABLE `txzj_miniapp_white_list` (`id` int(11), `shop_id` int(20), `nick` char(255),`online_code` varchar(256));

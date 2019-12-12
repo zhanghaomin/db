@@ -45,14 +45,14 @@ retry:
     assert_eq_str(rf->origin_cols_name[0], "id");
     assert_eq_str(rf->static_cols_name[0], "id");
     assert(rf->cols_fmt[0].is_dynamic == 0);
-    assert(rf->cols_fmt[0].len == 11);
+    assert(rf->cols_fmt[0].len == sizeof(int));
     assert(rf->cols_fmt[0].type == C_INT);
 
     assert_eq_str(rf->origin_cols_name[1], "shop_id");
     assert_eq_str(rf->static_cols_name[1], "shop_id");
     assert(rf->cols_fmt[1].is_dynamic == 0);
-    assert(rf->cols_fmt[1].len == 20);
-    assert(rf->cols_fmt[1].type == C_DOUBLE);
+    assert(rf->cols_fmt[1].len == sizeof(int));
+    assert(rf->cols_fmt[1].type == C_INT);
 
     assert_eq_str(rf->origin_cols_name[2], "nick");
     assert_eq_str(rf->static_cols_name[2], "nick");
@@ -85,7 +85,10 @@ retry:
     // print_ast(G_AST, 1, 1);
     assert(insert_row(d, G_AST) == 1);
     printf("insert pass\n");
-    // traverse_table(t->pager->);
 
+    Cursor* c;
+    c = cursor_init(t);
+    traverse_table(c);
+    printf("cursor pass\n");
     return 0;
 }
