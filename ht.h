@@ -26,6 +26,7 @@ void ht_insert(HashTable* ht, char* key, void* val);
 void ht_resize(HashTable* ht);
 void* ht_find(HashTable* ht, char* key);
 unsigned int ht_hash(char* key);
+void ht_release(HashTable* ht);
 int ht_delete(HashTable* ht, char* key);
 
 #endif

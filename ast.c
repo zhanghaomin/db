@@ -3,9 +3,7 @@
 #include <assert.h>
 #include <stdarg.h>
 
-static int lasts[20] = { 0 };
-
-void print_space(int step, int last)
+void print_space(int step, int last, int lasts[])
 {
     for (int i = 1; i <= step; i++) {
         if (i == step) {
@@ -36,9 +34,9 @@ void print_attr(int attr)
     printf("attr: %d\n", attr);
 }
 
-void print_ast_val(AstVal* av, int step)
+void print_ast_val(AstVal* av, int step, int lasts[])
 {
-    print_space(step + 1, 1);
+    print_space(step + 1, 1, lasts);
     printf("val: ");
 
     if (av->val->type == INTEGER) {
@@ -50,27 +48,33 @@ void print_ast_val(AstVal* av, int step)
     }
 }
 
-void print_ast(Ast* a, int step, int last)
+void print_ast(Ast* a, int step, int last, int lasts[])
 {
+    int lasts1[20] = { 0 };
+
+    if (lasts == NULL) {
+        lasts = lasts1;
+    }
+
     if (a == NULL) {
         return;
     }
 
-    print_space(step, last);
+    print_space(step, last, lasts);
     printf("%s:\n", get_kind_name(a->kind));
 
     if (a->kind == AST_VAL) {
-        print_ast_val((AstVal*)a, step);
+        print_ast_val((AstVal*)a, step, lasts);
         return;
     } else {
-        print_space(step + 1, 0);
+        print_space(step + 1, 0, lasts);
         print_attr(a->attr);
-        print_space(step + 1, 0);
+        print_space(step + 1, 0, lasts);
         printf("children: %d\n", a->children);
-        print_space(step + 1, 1);
+        print_space(step + 1, 1, lasts);
         printf("child: \n");
         for (int i = 0; i < a->children; i++) {
-            print_ast(a->child[i], step + 2, i == a->children - 1);
+            print_ast(a->child[i], step + 2, i == a->children - 1, lasts);
         }
     }
 }
@@ -103,6 +107,44 @@ Ast* create_ast(int children, AstKind kind, int attr, ...)
 
     va_end(ap);
     return a;
+}
+
+void dbval_destory(DBVal* d)
+{
+    if (d->type == STRING) {
+        free(d->val.str);
+    }
+
+    free(d);
+}
+
+void ast_destory(Ast* a)
+{
+    if (a == NULL) {
+        return;
+    }
+
+    AstVal* tmp;
+
+    if (a->kind == AST_VAL) {
+        tmp = (AstVal*)(a);
+        dbval_destory(tmp->val);
+        free(a);
+        return;
+    }
+
+    for (int i = 0; i < a->children; i++) {
+        if (a->child[i]->kind == AST_VAL) {
+            tmp = (AstVal*)(a->child[i]);
+            dbval_destory(tmp->val);
+            free(a->child[i]);
+        } else {
+            ast_destory(a->child[i]);
+        }
+    }
+
+    free(a->child);
+    free(a);
 }
 
 Ast* ast_add_child(Ast* a, Ast* child)

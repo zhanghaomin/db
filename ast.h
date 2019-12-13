@@ -155,7 +155,8 @@ typedef struct {
 
 Ast* create_ast(int children, AstKind kind, int attr, ...);
 Ast* ast_add_child(Ast* a, Ast* child);
-void print_ast(Ast* a, int step, int last);
+void print_ast(Ast* a, int step, int last, int lasts[]);
+void ast_destory(Ast* a);
 
 Ast* G_AST;
 

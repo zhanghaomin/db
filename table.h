@@ -78,13 +78,16 @@ typedef struct {
 } Cursor;
 
 DB* db_init(HtValueDtor table_dtor);
+void db_destory(DB* d);
 Table* open_table(DB* d, char* name);
 Table* create_table(DB* d, Ast* a);
+void table_destory(Table* t);
 int insert_row(DB* d, Ast* a);
 void unserialize_row(void* row, RowFmt* rf, QueryResult* qr);
 void destory_query_result(QueryResultVal* qrv);
 void cursor_rewind(Cursor* c);
 Cursor* cursor_init(Table* t);
+void cursor_destory(Cursor* c);
 void traverse_table(Cursor* c);
 
 #endif

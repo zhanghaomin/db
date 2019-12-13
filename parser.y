@@ -27,6 +27,8 @@ int yyerror(char *s);
     Ast* ast;
 }
 
+%destructor { ast_destory($$); } <ast>
+
 %%
 topstmt:
       select_stmt ';' { $$ = $1; G_AST = $$; YYACCEPT;}

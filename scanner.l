@@ -44,6 +44,8 @@ int yyerror(char *s);
 `[a-zA-Z_][a-zA-Z0-9_]*`|'[a-zA-Z_][a-zA-Z0-9_]*'|\"[a-zA-Z_][a-zA-Z0-9_]*\" {
     char *s;
     s = strndup(yytext+1, yyleng-2);
+    s = realloc(s, yyleng-1);
+    s[yyleng-2] = '\0';
     yylval.ast = (Ast *)create_val_ast(STRING, s);
     free(s);
     return T_IDENTIFIER;
@@ -57,7 +59,10 @@ int yyerror(char *s);
     return T_NUMBER;
 }
 '([^']|\\')+'|\"([^"]|\\\")+\" {
-    yylval.ast = (Ast *)create_val_ast(STRING, escape_str(yytext+1, yyleng-2, yytext[0]));
+    char *s;
+    s = escape_str(yytext+1, yyleng-2, yytext[0]);
+    yylval.ast = (Ast *)create_val_ast(STRING, s);
+    free(s);
     return T_LITERAL;
 }
 [ \t\n] { /* skip */}
@@ -81,4 +86,16 @@ static char* escape_str(char* s, int s_len, char c)
     new_s[new_len] = '\0';
     new_s = realloc(new_s, new_len+1);
     return new_s;
+}
+
+int lex_read_line(FILE* fp, char *s, int len)
+{
+    YY_BUFFER_STATE bp;
+    int res;
+    fgets(s, len, fp); //读取一行
+    bp = yy_scan_bytes(s, len);
+    yy_switch_to_buffer(bp);
+    res = yyparse();
+    yy_delete_buffer(bp);
+    return res;
 }

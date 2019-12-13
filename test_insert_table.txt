@@ -1,1 +1,0 @@
-INSERT INTO `txzj_miniapp_white_list` VALUES (1, 68378311, 'hjabschbasc', 'https://m.duanqu.com?_ariver_appid=3000000002135593'),(2, 783783, 'ascbhsbacsac', 'https://m.duanqu.com?_ariver_appid=3000000002135593'),(3, 8222, 'sabchjbsac', 'https://m.duanqu.com?_ariver_appid=3000000002135593'),(4, 8783, 'sahjcbsbcaaaaaaaaaa', 'https://m.duanqu.com?_ariver_ap');

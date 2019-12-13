@@ -6,6 +6,7 @@
 
 extern int yyparse();
 extern void yyrestart(FILE* input_file);
+extern void lex_read_line(FILE* fp, char* s, int len);
 
 void UNUSED assert_eq_str(char* str, char* str2)
 {
@@ -18,29 +19,30 @@ void UNUSED assert_eq_str(char* str, char* str2)
 int main(int argc UNUSED, char const* argv[] UNUSED)
 {
     FILE* f;
-    f = fopen("test_create_table.txt", "r+");
-    yyrestart(f);
-    assert(yyparse() == 0);
+    f = fopen("test.sql", "r+");
+    char s[4096];
+    lex_read_line(f, s, 4096);
 
     DB* d;
     Table* t;
-    int test_get = 0;
     d = db_init(NULL);
     t = create_table(d, G_AST);
-retry:
+    ast_destory(G_AST);
+
     assert_eq_str(t->name, "txzj_miniapp_white_list");
     assert(t->data_fd > 0);
     assert(access("t_txzj_miniapp_white_list.dat", 0) == 0);
     assert(t->row_count == 0);
     assert(t->max_page_num == 0);
 
-    for (int i = 0; i < MAX_PAGE_CNT_P_TABLE; i++) {
-        assert(t->pager->pages[i] == NULL);
-        assert(t->free_map[i] == PAGE_SIZE - sizeof(t->pager->pages[i]->header));
-    }
+    // for (int i = 0; i < MAX_PAGE_CNT_P_TABLE; i++) {
+    //     assert(t->pager->pages[i] == NULL);
+    //     assert(t->free_map[i] == PAGE_SIZE - sizeof(t->pager->pages[i]->header));
+    // }
 
     RowFmt* rf;
     rf = t->row_fmt;
+    // CREATE TABLE `txzj_miniapp_white_list` ( `id` int(11) , `shop_id` int(20), `nick` char(255) , `online_code` varchar(256), `create_time` int(20),  `update_time` int(20)  );
 
     assert_eq_str(rf->origin_cols_name[0], "id");
     assert_eq_str(rf->static_cols_name[0], "id");
@@ -66,29 +68,43 @@ retry:
     assert(rf->cols_fmt[3].len == 256);
     assert(rf->cols_fmt[3].type == C_VARCHAR);
 
-    assert(rf->dynamic_cols_count == 1);
-    assert(rf->static_cols_count == 3);
-    assert(rf->origin_cols_count == 4);
+    assert_eq_str(rf->origin_cols_name[4], "create_time");
+    assert_eq_str(rf->static_cols_name[3], "create_time");
+    assert(rf->cols_fmt[4].is_dynamic == 0);
+    assert(rf->cols_fmt[4].len == sizeof(int));
+    assert(rf->cols_fmt[4].type == C_INT);
 
-    if (!test_get) {
-        printf("create table pass\n");
-        t = open_table(d, "txzj_miniapp_white_list");
-        test_get = 1;
-        goto retry;
+    assert_eq_str(rf->origin_cols_name[5], "update_time");
+    assert_eq_str(rf->static_cols_name[4], "update_time");
+    assert(rf->cols_fmt[5].is_dynamic == 0);
+    assert(rf->cols_fmt[5].len == sizeof(int));
+    assert(rf->cols_fmt[5].type == C_INT);
+
+    assert(rf->dynamic_cols_count == 1);
+    assert(rf->static_cols_count == 5);
+    assert(rf->origin_cols_count == 6);
+
+    printf("create table pass\n");
+    Table* new_table;
+    new_table = open_table(d, "txzj_miniapp_white_list");
+    assert(new_table == t);
+    printf("open table pass\n");
+
+    while (!feof(f)) {
+        lex_read_line(f, s, 4096);
+        assert(insert_row(d, G_AST) == 1);
+        ast_destory(G_AST);
     }
 
-    printf("open null table pass\n");
-
-    f = fopen("test_insert_table.txt", "r+");
-    yyrestart(f);
-    yyparse();
-    // print_ast(G_AST, 1, 1);
-    assert(insert_row(d, G_AST) == 1);
     printf("insert pass\n");
 
     Cursor* c;
     c = cursor_init(t);
     traverse_table(c);
     printf("cursor pass\n");
+    cursor_destory(c);
+    table_destory(t);
+    db_destory(d);
+    fclose(f);
     return 0;
 }

@@ -17,6 +17,11 @@ Cursor* cursor_init(Table* t)
     return c;
 }
 
+void cursor_destory(Cursor* c)
+{
+    free(c);
+}
+
 void* cursor_value(Cursor* c)
 {
     return (void*)(c->page->data + c->offset);
@@ -81,13 +86,13 @@ void cursor_next(Cursor* c)
         return;
     }
 
+    c->offset += get_row_len(cursor_value(c));
+    c->page_row_num++;
+
     if (cursor_reach_page_end(c)) {
         c->page = get_page(c->table, c->page->header.page_num + 1);
         c->offset = 0;
         c->page_row_num = 0;
-    } else {
-        c->offset += get_row_len(cursor_value(c));
-        c->page_row_num++;
     }
 
     c->row_num++;
@@ -174,6 +179,12 @@ void println_rows(Table* t, QueryResultList* qrl, int qrl_len, int qr_len)
     paddings = scalloc(sizeof(int), qr_len);
     char s[1024];
 
+    for (int i = 0; i < t->row_fmt->origin_cols_count; i++) {
+        if (paddings[i] < (int)strlen(t->row_fmt->origin_cols_name[i])) {
+            paddings[i] = (int)strlen(t->row_fmt->origin_cols_name[i]);
+        }
+    }
+
     for (int i = 0; i < qrl_len; i++) {
         for (int j = 0; j < qr_len; j++) {
             if (qrl[i][j]->type == C_VARCHAR || qrl[i][j]->type == C_CHAR) {
@@ -204,6 +215,21 @@ void println_rows(Table* t, QueryResultList* qrl, int qrl_len, int qr_len)
         println_row(qrl[i], qr_len, paddings);
         println_row_line(paddings, qr_len);
     }
+    free(paddings);
+}
+
+static void destory_query_result_list(QueryResultList* qrl, int qrl_len, int qr_len)
+{
+    for (int i = 0; i < qrl_len; i++) {
+        for (int j = 0; j < qr_len; j++) {
+            free(qrl[i][j]->data);
+            free(qrl[i][j]);
+        }
+
+        free(qrl[i]);
+    }
+
+    free(qrl);
 }
 
 void traverse_table(Cursor* c)
@@ -231,6 +257,7 @@ void traverse_table(Cursor* c)
     }
 
     println_rows(c->table, qrl, i, qr_len);
+    destory_query_result_list(qrl, i, qr_len);
 }
 
 Page* find_free_page(Table* t, int size)
@@ -238,7 +265,7 @@ Page* find_free_page(Table* t, int size)
     Page* find_page;
     int i = 0;
 
-    for (; i <= t->max_page_num; i++) {
+    for (; i <= MAX_PAGE_CNT_P_TABLE; i++) {
         if (size <= t->free_map[i]) {
             find_page = get_page(t, i);
             return find_page;
@@ -246,6 +273,7 @@ Page* find_free_page(Table* t, int size)
     }
 
     // never happen
+    printf("page no space\n");
     exit(-1);
 }
 
@@ -591,9 +619,36 @@ DB* db_init(HtValueDtor table_dtor)
     return d;
 }
 
+void db_destory(DB* d)
+{
+    ht_release(d->tables);
+    free(d);
+}
+
 static void get_table_file_name(char* name, char* file_name)
 {
     sprintf(file_name, "t_%s.dat", name);
+}
+
+static void free_row_fmt(RowFmt* rf)
+{
+    for (int i = 0; i < rf->origin_cols_count; i++) {
+        free(rf->origin_cols_name[i]);
+    }
+
+    for (int i = 0; i < rf->static_cols_count; i++) {
+        free(rf->static_cols_name[i]);
+    }
+
+    for (int i = 0; i < rf->dynamic_cols_count; i++) {
+        free(rf->dynamic_cols_name[i]);
+    }
+
+    free(rf->cols_fmt);
+    free(rf->origin_cols_name);
+    free(rf->dynamic_cols_name);
+    free(rf->static_cols_name);
+    free(rf);
 }
 
 static void parse_fmt_list(Ast* a, RowFmt* rf)
@@ -604,7 +659,7 @@ static void parse_fmt_list(Ast* a, RowFmt* rf)
 
     rf->origin_cols_name = smalloc(sizeof(char*) * a->children);
     rf->origin_cols_count = a->children;
-    rf->cols_fmt = smalloc(sizeof(ColFmt*) * a->children);
+    rf->cols_fmt = smalloc(sizeof(ColFmt) * a->children);
     rf->dynamic_cols_count = 0;
     rf->static_cols_count = 0;
     rf->dynamic_cols_name = NULL;
@@ -663,6 +718,22 @@ Table* create_table(DB* d, Ast* a)
     parse_fmt_list(fmt_list, t->row_fmt);
     ht_insert(d->tables, AST_VAL_STR(table_name), t);
     return t;
+}
+
+void table_destory(Table* t)
+{
+    free(t->name);
+    close(t->data_fd);
+
+    for (int i = 0; i < MAX_PAGE_CNT_P_TABLE; i++) {
+        if (t->pager->pages[i] != NULL) {
+            free(t->pager->pages[i]);
+        }
+    }
+
+    free(t->pager);
+    free_row_fmt(t->row_fmt);
+    free(t);
 }
 
 Table* open_table(DB* d, char* name)
