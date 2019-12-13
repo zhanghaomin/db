@@ -7,6 +7,9 @@ db: $(tmp)
 test: $(tmp)
 	gcc -Wall -W -g -o table_test table_test.c table.c $(common) $(tmp) && ./table_test
 
+test_persist: $(tmp)
+	gcc -Wall -W -g -o persist_test persist_test.c table.c $(common) $(tmp) && ./persist_test
+
 parser.tab.c: 
 	bison -d parser.y
 lex.yy.c: 

@@ -58,6 +58,7 @@ typedef struct {
     HashTable* tables;
 } DB;
 
+//
 typedef struct {
     char* name;
     int data_fd;
@@ -77,11 +78,10 @@ typedef struct {
     int page_row_num; // 当前指向page中第几行
 } Cursor;
 
-DB* db_init(HtValueDtor table_dtor);
+DB* db_init();
 void db_destory(DB* d);
 Table* open_table(DB* d, char* name);
-Table* create_table(DB* d, Ast* a);
-void table_destory(Table* t);
+int create_table(DB* d, Ast* a);
 int insert_row(DB* d, Ast* a);
 void unserialize_row(void* row, RowFmt* rf, QueryResult* qr);
 void destory_query_result(QueryResultVal* qrv);
@@ -89,5 +89,8 @@ void cursor_rewind(Cursor* c);
 Cursor* cursor_init(Table* t);
 void cursor_destory(Cursor* c);
 void traverse_table(Cursor* c);
+int flush_page(Table* t, int page_num);
+Table* unserialize_table(void* serialized, int* len);
+void* serialize_table(Table* t, int* len);
 
 #endif

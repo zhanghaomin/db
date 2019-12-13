@@ -44,36 +44,38 @@ Page* get_page(Table* t, int page_num)
     Page* new_page;
 
     if (t->pager->pages[page_num] == NULL) {
-        new_page = smalloc(PAGE_SIZE);
-        new_page->header.page_num = page_num;
-        new_page->header.row_count = 0;
-        new_page->header.tail = 0;
+        new_page = scalloc(PAGE_SIZE, 1);
         t->pager->pages[page_num] = new_page;
 
-        if (page_num > t->max_page_num) {
+        if (page_num > t->max_page_num) { // 新空间,不需要读磁盘
+            new_page->header.page_num = page_num;
+            new_page->header.row_count = 0;
+            new_page->header.tail = 0;
             t->max_page_num = page_num;
+        } else { // 旧数据
+            read(t->data_fd, new_page, PAGE_SIZE);
         }
     }
 
     return t->pager->pages[page_num];
 }
 
-// int flush_page(Pager* p, int page_num)
-// {
-//     if (p->pages[page_num] == NULL) {
-//         return 0;
-//     }
+int flush_page(Table* t, int page_num)
+{
+    if (t->pager->pages[page_num] == NULL) {
+        return 0;
+    }
 
-//     if (lseek(p->table->data_fd, PAGE_SIZE * page_num, SEEK_SET) == -1) {
-//         return -1;
-//     }
+    if (lseek(t->data_fd, PAGE_SIZE * page_num, SEEK_SET) == -1) {
+        return -1;
+    }
 
-//     if (write(p->table->data_fd, p->pages[page_num], PAGE_SIZE) == -1) {
-//         return -1;
-//     }
+    if (write(t->data_fd, t->pager->pages[page_num], PAGE_SIZE) == -1) {
+        return -1;
+    }
 
-//     return 0;
-// }
+    return 0;
+}
 
 static int cursor_reach_page_end(Cursor* c)
 {
@@ -367,10 +369,149 @@ static inline void copy_ast_val(void* dest, AstVal* a)
         memcpy(dest, &i, sizeof(int));
     } else if (AST_VAL_TYPE(a) == STRING) {
         memcpy(dest, AST_VAL_STR(a), AST_VAL_LEN(a));
-    } else if (AST_VAL_TYPE(a) == DOUBLE) {
+    } else {
         d = AST_VAL_DOUBLE(a);
         memcpy(dest, &d, sizeof(double));
     }
+}
+
+static void get_table_file_name(char* name, char* file_name)
+{
+    sprintf(file_name, "t_%s.dat", name);
+}
+
+Table* unserialize_table(void* serialized, int* len)
+{
+    int rec_len = 0;
+    int col_fmt_len = 0;
+    int col_name_size = 0;
+    void* origin;
+    Table* t;
+
+    origin = serialized;
+    t = smalloc(sizeof(Table));
+    t->row_fmt = smalloc(sizeof(RowFmt));
+
+    memcpy(&rec_len, serialized, sizeof(int)); // rec_len
+    serialized += sizeof(int);
+    memcpy(&(t->max_page_num), serialized, sizeof(int)); // max_page_num
+    serialized += sizeof(int);
+    memcpy(&(t->row_count), serialized, sizeof(int)); // row_count
+    serialized += sizeof(int);
+    memcpy(&(t->row_fmt->origin_cols_count), serialized, sizeof(int)); // col_count
+    serialized += sizeof(int);
+
+    // 初始化结构
+    t->row_fmt->origin_cols_name = smalloc(sizeof(char*) * t->row_fmt->origin_cols_count);
+    t->row_fmt->cols_fmt = smalloc(sizeof(ColFmt) * t->row_fmt->origin_cols_count);
+    t->row_fmt->dynamic_cols_count = 0;
+    t->row_fmt->dynamic_cols_name = NULL;
+    t->row_fmt->static_cols_count = 0;
+    t->row_fmt->static_cols_name = NULL;
+
+    for (int i = 0; i < t->row_fmt->origin_cols_count; i++) {
+        memcpy(&col_fmt_len, serialized, sizeof(int)); // col_fmt_len
+        serialized += sizeof(int);
+        memcpy(&(t->row_fmt->cols_fmt[i].type), serialized, sizeof(int)); // col_type
+        serialized += sizeof(int);
+        memcpy(&(t->row_fmt->cols_fmt[i].len), serialized, sizeof(int)); // col_len
+        serialized += sizeof(int);
+        col_name_size = col_fmt_len - 3 * sizeof(int);
+        t->row_fmt->origin_cols_name[i] = strndup(serialized, col_name_size); // col_name
+
+        if (t->row_fmt->cols_fmt[i].type == C_INT || t->row_fmt->cols_fmt[i].type == C_DOUBLE || t->row_fmt->cols_fmt[i].type == C_CHAR) {
+            t->row_fmt->static_cols_count++;
+            t->row_fmt->static_cols_name = realloc(t->row_fmt->static_cols_name, t->row_fmt->static_cols_count * sizeof(char*));
+            t->row_fmt->static_cols_name[t->row_fmt->static_cols_count - 1] = strndup(serialized, col_name_size);
+            t->row_fmt->cols_fmt[i].is_dynamic = 0;
+        } else if (t->row_fmt->cols_fmt[i].type == C_VARCHAR) {
+            t->row_fmt->dynamic_cols_count++;
+            t->row_fmt->dynamic_cols_name = realloc(t->row_fmt->dynamic_cols_name, t->row_fmt->dynamic_cols_count * sizeof(char*));
+            t->row_fmt->dynamic_cols_name[t->row_fmt->dynamic_cols_count - 1] = strndup(serialized, col_name_size);
+            t->row_fmt->cols_fmt[i].is_dynamic = 1;
+        }
+
+        serialized += col_name_size; // skip rec
+    }
+
+    t->pager = smalloc(sizeof(Pager));
+
+    for (int i = 0; i < MAX_PAGE_CNT_P_TABLE; i++) {
+        t->pager->pages[i] = NULL;
+        memcpy(&(t->free_map[i]), serialized, sizeof(int));
+        serialized += sizeof(int);
+    }
+
+    t->name = smalloc(origin + rec_len - serialized);
+    memcpy(t->name, serialized, origin + rec_len - serialized);
+
+    if (len != NULL) {
+        *len = rec_len;
+    }
+
+    char file_name[255];
+    get_table_file_name(t->name, file_name);
+    t->data_fd = open(file_name, O_RDWR, 0644);
+    return t;
+}
+
+/**
+ *  | len | max_page_num | row_count | col_count | col_fmt_len | col_type | col_len | col_name | ... | free_map | ... | table_name
+ */
+void* serialize_table(Table* t, int* len)
+{
+    int rec_len = 0;
+    int col_fmt_len = 0;
+    int col_name_size = 0;
+    void *rec, *origin;
+
+    rec_len += 4 * sizeof(int); // len max_page_num row_count col_count
+
+    // 计算字段格式所占长度
+    for (int i = 0; i < t->row_fmt->origin_cols_count; i++) {
+        rec_len += 3 * sizeof(int); // col_fmt_len col_type col_len
+        rec_len += strlen(t->row_fmt->origin_cols_name[i]) + 1; // with '\0'
+    }
+
+    rec_len += MAX_PAGE_CNT_P_TABLE * sizeof(int); // freemap
+    rec_len += strlen(t->name) + 1; // with '\0'
+
+    rec = scalloc(rec_len, 1);
+    origin = rec;
+    memcpy(rec, &rec_len, sizeof(int)); // len
+    rec += sizeof(int);
+    memcpy(rec, &t->max_page_num, sizeof(int)); // max_page_num
+    rec += sizeof(int);
+    memcpy(rec, &t->row_count, sizeof(int)); // row_count
+    rec += sizeof(int);
+    memcpy(rec, &t->row_fmt->origin_cols_count, sizeof(int)); // row_count
+    rec += sizeof(int);
+
+    for (int i = 0; i < t->row_fmt->origin_cols_count; i++) {
+        col_name_size = strlen(t->row_fmt->origin_cols_name[i]) + 1;
+        col_fmt_len = 3 * sizeof(int) + col_name_size;
+        memcpy(rec, &col_fmt_len, sizeof(int)); // col_fmt_len
+        rec += sizeof(int);
+        memcpy(rec, &(t->row_fmt->cols_fmt[i].type), sizeof(int)); // col_type
+        rec += sizeof(int);
+        memcpy(rec, &(t->row_fmt->cols_fmt[i].len), sizeof(int)); // col_len
+        rec += sizeof(int);
+        memcpy(rec, t->row_fmt->origin_cols_name[i], col_name_size); // col_name
+        rec += col_name_size;
+    }
+
+    for (int i = 0; i < MAX_PAGE_CNT_P_TABLE; i++) {
+        memcpy(rec, &(t->free_map[i]), sizeof(int));
+        rec += sizeof(int);
+    }
+
+    memcpy(rec, t->name, strlen(t->name) + 1);
+
+    if (len != NULL) {
+        *len = rec_len;
+    }
+
+    return origin;
 }
 
 /*
@@ -611,23 +752,36 @@ int insert_row(DB* d, Ast* a)
 //     return rows;
 // }
 
-DB* db_init(HtValueDtor table_dtor)
+// | len | table_count | table_fmt | ... |
+DB* db_init()
 {
     DB* d;
+    int fd, dat_len, table_count, rec_len;
+    void *data, *origin;
+    Table* t;
     d = smalloc(sizeof(DB));
-    d->tables = ht_init(NULL, table_dtor);
+    d->tables = ht_init(NULL, NULL);
+
+    if (access("db.dat", 0) == 0) {
+        fd = open("db.dat", O_RDWR, 0644);
+        read(fd, &dat_len, sizeof(int)); // len
+        data = smalloc(dat_len);
+        origin = data;
+        read(fd, data, dat_len - sizeof(int));
+        memcpy(&table_count, data, sizeof(int));
+        data += sizeof(int);
+
+        for (int i = 0; i < table_count; i++) {
+            t = unserialize_table(data, &rec_len);
+            ht_insert(d->tables, t->name, t);
+            data += rec_len;
+        }
+
+        free(origin);
+        close(fd);
+    }
+
     return d;
-}
-
-void db_destory(DB* d)
-{
-    ht_release(d->tables);
-    free(d);
-}
-
-static void get_table_file_name(char* name, char* file_name)
-{
-    sprintf(file_name, "t_%s.dat", name);
 }
 
 static void free_row_fmt(RowFmt* rf)
@@ -691,7 +845,7 @@ static void parse_fmt_list(Ast* a, RowFmt* rf)
     }
 }
 
-Table* create_table(DB* d, Ast* a)
+int create_table(DB* d, Ast* a)
 {
     assert(a->kind == AST_CREATE);
 
@@ -703,6 +857,12 @@ Table* create_table(DB* d, Ast* a)
     fmt_list = a->child[1];
     t = smalloc(sizeof(Table));
     t->name = strdup(AST_VAL_STR(table_name));
+
+    if (ht_find(d->tables, t->name) != NULL) {
+        printf("table exist\n");
+        return -1;
+    }
+
     get_table_file_name(t->name, file_name);
     t->data_fd = open(file_name, O_CREAT | O_RDWR, 0644);
     t->pager = smalloc(sizeof(Pager));
@@ -715,13 +875,23 @@ Table* create_table(DB* d, Ast* a)
     t->max_page_num = 0;
     t->row_count = 0;
     t->row_fmt = smalloc(sizeof(RowFmt));
+    get_page(t, 0);
     parse_fmt_list(fmt_list, t->row_fmt);
     ht_insert(d->tables, AST_VAL_STR(table_name), t);
-    return t;
+    return 0;
+}
+
+Table* open_table(DB* d, char* name)
+{
+    return (Table*)ht_find(d->tables, name);
 }
 
 void table_destory(Table* t)
 {
+    for (int i = 0; i <= t->max_page_num; i++) {
+        flush_page(t, i);
+    }
+
     free(t->name);
     close(t->data_fd);
 
@@ -736,7 +906,29 @@ void table_destory(Table* t)
     free(t);
 }
 
-Table* open_table(DB* d, char* name)
+void db_destory(DB* d)
 {
-    return (Table*)ht_find(d->tables, name);
+    int fd, len, total_len;
+    void* data;
+    total_len = 0;
+
+    fd = open("db.dat", O_RDWR | O_CREAT, 0644);
+    total_len += 2 * sizeof(int);
+
+    lseek(fd, sizeof(int), SEEK_SET);
+    write(fd, &(d->tables->cnt), sizeof(int));
+
+    FOREACH_HT(d->tables, k, t)
+    data = serialize_table(t, &len);
+    table_destory(t);
+    write(fd, data, len);
+    total_len += len;
+    free(data);
+    ENDFOREACH()
+
+    lseek(fd, 0, SEEK_SET);
+    write(fd, &(total_len), sizeof(int));
+    close(fd);
+    ht_release(d->tables);
+    free(d);
 }

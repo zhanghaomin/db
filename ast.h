@@ -147,7 +147,7 @@ typedef struct {
         _size = sizeof(double);                 \
     } else if (AST_VAL_TYPE(_ast) == INTEGER) { \
         _size = sizeof(int);                    \
-    } else if (AST_VAL_TYPE(_ast) == STRING) {  \
+    } else {                                    \
         _size = strlen(AST_VAL_STR(_ast)) + 1;  \
     }                                           \
     _size;                                      \

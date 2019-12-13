@@ -18,23 +18,21 @@ void UNUSED assert_eq_str(char* str, char* str2)
 
 int main(int argc UNUSED, char const* argv[] UNUSED)
 {
-    FILE* f;
-    f = fopen("test.sql", "r+");
-    char s[4096];
-    lex_read_line(f, s, 4096);
+    // FILE* f;
+    // f = fopen("test.sql", "r+");
+    // char s[4096];
+    // lex_read_line(f, s, 4096);
 
     DB* d;
     Table* t;
     d = db_init();
-    assert(create_table(d, G_AST) == 0);
-    ast_destory(G_AST);
     t = open_table(d, "txzj_miniapp_white_list");
-    assert(t != NULL);
+
     assert_eq_str(t->name, "txzj_miniapp_white_list");
     assert(t->data_fd > 0);
     assert(access("t_txzj_miniapp_white_list.dat", 0) == 0);
-    assert(t->row_count == 0);
-    assert(t->max_page_num == 0);
+    assert(t->row_count == 27);
+    // assert(t->max_page_num == 0);
 
     // for (int i = 0; i < MAX_PAGE_CNT_P_TABLE; i++) {
     //     assert(t->pager->pages[i] == NULL);
@@ -85,22 +83,22 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     assert(rf->static_cols_count == 5);
     assert(rf->origin_cols_count == 6);
 
-    printf("create table pass\n");
+    printf("persist table pass\n");
 
-    while (!feof(f)) {
-        lex_read_line(f, s, 4096);
-        assert(insert_row(d, G_AST) == 1);
-        ast_destory(G_AST);
-    }
+    // while (!feof(f)) {
+    //     lex_read_line(f, s, 4096);
+    //     assert(insert_row(d, G_AST) == 1);
+    //     ast_destory(G_AST);
+    // }
 
-    printf("insert pass\n");
+    // printf("insert pass\n");
 
     Cursor* c;
     c = cursor_init(t);
     traverse_table(c);
-    printf("cursor pass\n");
+    printf("persist row pass\n");
     cursor_destory(c);
     db_destory(d);
-    fclose(f);
+    // fclose(f);
     return 0;
 }
