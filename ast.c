@@ -48,14 +48,8 @@ void print_ast_val(AstVal* av, int step, int lasts[])
     }
 }
 
-void print_ast(Ast* a, int step, int last, int lasts[])
+void print_ast2(Ast* a, int step, int last, int lasts[])
 {
-    int lasts1[20] = { 0 };
-
-    if (lasts == NULL) {
-        lasts = lasts1;
-    }
-
     if (a == NULL) {
         return;
     }
@@ -74,9 +68,17 @@ void print_ast(Ast* a, int step, int last, int lasts[])
         print_space(step + 1, 1, lasts);
         printf("child: \n");
         for (int i = 0; i < a->children; i++) {
-            print_ast(a->child[i], step + 2, i == a->children - 1, lasts);
+            print_ast2(a->child[i], step + 2, (i == a->children - 1) || (a->child[i + 1] == NULL), lasts);
         }
     }
+}
+
+void print_ast(Ast* a)
+{
+    int* lasts;
+    lasts = scalloc(sizeof(int) * 100, 1);
+    print_ast2(a, 1, 1, lasts);
+    free(lasts);
 }
 
 Ast* create_ast(int children, AstKind kind, int attr, ...)
@@ -98,7 +100,7 @@ Ast* create_ast(int children, AstKind kind, int attr, ...)
         return a;
     }
 
-    a->child = smalloc(sizeof(Ast*) * children);
+    a->child = scalloc(sizeof(Ast*) * children, 1);
     va_start(ap, attr);
 
     for (int i = 0; i < children; i++) {
@@ -134,7 +136,7 @@ void ast_destory(Ast* a)
     }
 
     for (int i = 0; i < a->children; i++) {
-        if (a->child[i]->kind == AST_VAL) {
+        if (a->child[i] != NULL && a->child[i]->kind == AST_VAL) {
             tmp = (AstVal*)(a->child[i]);
             dbval_destory(tmp->val);
             free(a->child[i]);

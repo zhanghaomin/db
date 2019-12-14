@@ -19,35 +19,26 @@ int yyerror(char *s);
 "delete" {return T_DELETE;}
 "where" {return T_WHERE;}
 "from" {return T_FROM;}
-"and" {return T_AND;}
 "table" {return T_TABLE;}
 "order" {return T_ORDER;}
 "by" {return T_BY;}
 "limit" {return T_LIMIT;}
-"or" {return T_OR;}
-"=" {return T_EQ;}
 "int" {return T_INT;}
 "double" {return T_DOUBLE;}
 "varchar" {return T_VARCHAR;}
 "char" {return T_CHAR;}
-"!="|"<>" {return T_NEQ;}
-"<" {return T_LT;}
-"<=" {return T_LTE;}
-">" {return T_GT;}
-">=" {return T_GTE;}
+
+"and" {return T_AND;}
+"or" {return T_OR;}
 ","|";"|"("|")" {return *yytext;}
+"+"|"-"|"*"|"/"|"%"|"&"|"|"|"~"|"<"|">"|"="  {return *yytext;}
+"not"|"!" {return T_NOT;}
+"!="|"<>" {return T_NEQ;}
+"<=" {return T_LTE;}
+">=" {return T_GTE;}
 
 [a-zA-Z_][a-zA-Z0-9_]* {
     yylval.ast = (Ast *)create_val_ast(STRING, yytext);
-    return T_IDENTIFIER;
-}
-`[a-zA-Z_][a-zA-Z0-9_]*`|'[a-zA-Z_][a-zA-Z0-9_]*'|\"[a-zA-Z_][a-zA-Z0-9_]*\" {
-    char *s;
-    s = strndup(yytext+1, yyleng-2);
-    s = realloc(s, yyleng-1);
-    s[yyleng-2] = '\0';
-    yylval.ast = (Ast *)create_val_ast(STRING, s);
-    free(s);
     return T_IDENTIFIER;
 }
 -?[0-9]+ { 
@@ -58,7 +49,7 @@ int yyerror(char *s);
     yylval.ast = (Ast *)create_val_ast(DOUBLE, atof(yytext));
     return T_NUMBER;
 }
-'([^']|\\')+'|\"([^"]|\\\")+\" {
+'([^']|\\')+'|\"([^"]|\\\")+\"|`([^`]|\\`)+` {
     char *s;
     s = escape_str(yytext+1, yyleng-2, yytext[0]);
     yylval.ast = (Ast *)create_val_ast(STRING, s);

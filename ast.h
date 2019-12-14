@@ -11,8 +11,8 @@
 
 static const char* LimitedKindNameMap[][1024] UNUSED = {
     { "AST_VAL" }, // 0 child
-    { "AST_TABLE", "AST_ORDER_BY_COL" }, // 1 child
-    { "AST_WHERE_NODE", "AST_WHERE_LEAF", "AST_COL_FMT", "AST_CREATE", "AST_INSERT", "AST_LIMIT" }, // 2 child
+    { "AST_TABLE", "AST_ORDER_BY_COL", "AST_WHERE_TOP_EXP" }, // 1 child
+    { "AST_WHERE_EXP", "AST_COL_FMT", "AST_CREATE", "AST_INSERT", "AST_LIMIT" }, // 2 child
     {}, // 3 child
     {}, // 4 child
     { "AST_SELECT" }, // 5 child
@@ -36,9 +36,9 @@ typedef enum {
     // 1 child
     AST_TABLE = 1 << CHILD_CNT_OFFSET,
     AST_ORDER_BY_COL,
+    AST_WHERE_TOP_EXP,
     // 2 child
-    AST_WHERE_NODE = 2 << CHILD_CNT_OFFSET,
-    AST_WHERE_LEAF,
+    AST_WHERE_EXP = 2 << CHILD_CNT_OFFSET,
     AST_COL_FMT,
     AST_CREATE,
     AST_INSERT,
@@ -68,16 +68,33 @@ typedef struct {
     } val;
 } DBVal;
 
+// %left T_OR
+// %left T_AND
+// %left "!" "not"
+// %left "=" "<" ">" "<=" ">=" "!=" "<>"
+// %left "+" "-" "&" "^" "|"
+// %left "*" "/" "%"
+// %left "~"
 typedef enum {
-    EQ, // =
-    GT, // >
-    LT, // <
-    GTE, // >=
-    LTE, // <=
-    NEQ, // != <>
-    W_AND, // and
-    W_OR // or
-} WhereOP;
+    E_OR,
+    E_AND,
+    E_NOT,
+    E_EQ,
+    E_GT,
+    E_LT,
+    E_LTE,
+    E_GTE,
+    E_NEQ,
+    E_ADD,
+    E_SUB,
+    E_B_AND,
+    E_B_XOR,
+    E_B_OR,
+    E_MUL,
+    E_DIV,
+    E_MOD,
+    E_B_NOT
+} ExpOp;
 
 typedef enum {
     C_INT,
@@ -155,7 +172,7 @@ typedef struct {
 
 Ast* create_ast(int children, AstKind kind, int attr, ...);
 Ast* ast_add_child(Ast* a, Ast* child);
-void print_ast(Ast* a, int step, int last, int lasts[]);
+void print_ast(Ast* a);
 void ast_destory(Ast* a);
 
 Ast* G_AST;

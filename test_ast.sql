@@ -1,0 +1,1 @@
+select a from b where (a + 3) * b / 100 > d or (~e & 1) and f = g % 1 or !(h);

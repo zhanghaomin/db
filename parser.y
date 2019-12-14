@@ -10,17 +10,24 @@ int yyerror(char *s);
 
 %token T_SELECT T_INSERT T_INTO T_VALUES T_UPDATE T_DELETE T_ORDER T_BY T_ASC T_DESC
 %token T_WHERE T_FROM T_SET T_CREATE T_TABLE T_LIMIT
-%token T_EQ T_NEQ T_LT T_LTE T_GT T_GTE 
+%token T_NEQ T_LTE T_GTE T_NOT
 %token T_INT T_CHAR T_VARCHAR T_DOUBLE
 %token T_AND T_OR
 %token <ast> T_IDENTIFIER T_LITERAL
 %token <ast> T_NUMBER
 
-%type <num> compare col_type
-%type <ast> topstmt select_stmt where where_clause cols_stmt table_name create_table_stmt order_by order_by_col_list order_by_col limit limit_clause
+%type <num> col_type
+%type <ast> topstmt select_stmt where expr cols_stmt table_name create_table_stmt order_by order_by_col_list order_by_col limit limit_clause
 %type <ast> col_fmt_stmt col_fmt_list_stmt insert_row_list_stmt insert_value_list_stmt insert_stmt insert_value
 
-%left T_AND T_OR
+%left T_OR
+%left T_AND
+%left T_NOT
+%left "=" "<" ">" T_LTE T_GTE T_NEQ
+%left "+" "-" "&" "^" "|" 
+%left "*" "/" "%"
+%left "~"
+
 
 %union {
     int num;
@@ -53,11 +60,10 @@ insert_value_list_stmt:
 insert_value:
       T_NUMBER { $$ = $1; }
     | T_LITERAL { $$ = $1; }
-    | T_IDENTIFIER { $$ = $1; }
     ;
 
 create_table_stmt:
-      T_CREATE T_TABLE table_name '(' col_fmt_list_stmt ')' { $$ = create_ast(2, AST_CREATE, -1, $3, $5); }
+     T_CREATE T_TABLE table_name '(' col_fmt_list_stmt ')' { $$ = create_ast(2, AST_CREATE, -1, $3, $5); }
     ;
 
 col_fmt_list_stmt:
@@ -67,6 +73,7 @@ col_fmt_list_stmt:
 
 col_fmt_stmt:
       T_IDENTIFIER col_type '(' T_NUMBER ')' { $$ = create_ast(2, AST_COL_FMT, $2, $1, $4); }
+    | T_LITERAL col_type '(' T_NUMBER ')' { $$ = create_ast(2, AST_COL_FMT, $2, $1, $4); }
     ;
 
 col_type: 
@@ -94,6 +101,9 @@ order_by_col:
       T_IDENTIFIER { $$ = create_ast(1, AST_ORDER_BY_COL, 0, $1); }
     | T_IDENTIFIER T_ASC { $$ = create_ast(1, AST_ORDER_BY_COL, 0, $1); }
     | T_IDENTIFIER T_DESC { $$ = create_ast(1, AST_ORDER_BY_COL, 1, $1); }
+    | T_LITERAL { $$ = create_ast(1, AST_ORDER_BY_COL, 0, $1); }
+    | T_LITERAL T_ASC { $$ = create_ast(1, AST_ORDER_BY_COL, 0, $1); }
+    | T_LITERAL T_DESC { $$ = create_ast(1, AST_ORDER_BY_COL, 1, $1); }
     ;
 
 limit:
@@ -108,34 +118,44 @@ limit_clause:
 
 table_name:
       T_IDENTIFIER { $$ = create_ast(1, AST_TABLE, -1, $1); }
+    | T_LITERAL { $$ = create_ast(1, AST_TABLE, -1, $1); }
     ;
 
 where:
       /* empty */ { $$ = NULL; }
-    | T_WHERE where_clause { $$ = $2; }
+    | T_WHERE expr { $$ = create_ast(1, AST_WHERE_TOP_EXP, -1, $2); }
     ;
 
-where_clause:
-      T_IDENTIFIER compare T_NUMBER { $$ = create_ast(2, AST_WHERE_LEAF, $2, $1, $3); }
-    | T_IDENTIFIER compare T_LITERAL { $$ = create_ast(2, AST_WHERE_LEAF, $2, $1, $3); }
-    | T_IDENTIFIER compare T_IDENTIFIER { $$ = create_ast(2, AST_WHERE_LEAF, $2, $1, $3); }
-    | '(' where_clause ')' { $$ = $2; }
-    | where_clause T_AND where_clause { $$ = create_ast(2, AST_WHERE_NODE, W_AND, $1, $3); }
-    | where_clause T_OR where_clause { $$ = create_ast(2, AST_WHERE_NODE, W_OR, $1, $3); }
+expr:
+      T_NUMBER { $$ = $1; }
+    | T_LITERAL { $$ = $1; }
+    | T_IDENTIFIER { $$ = $1; }
+    | expr '+' expr { $$ = create_ast(2, AST_WHERE_EXP, E_ADD, $1, $3); }
+    | expr '-' expr { $$ = create_ast(2, AST_WHERE_EXP, E_SUB, $1, $3); }
+    | expr '*' expr { $$ = create_ast(2, AST_WHERE_EXP, E_MUL, $1, $3); }
+    | expr '/' expr { $$ = create_ast(2, AST_WHERE_EXP, E_DIV, $1, $3); }
+    | expr '%' expr { $$ = create_ast(2, AST_WHERE_EXP, E_MOD, $1, $3); }
+    | expr '&' expr { $$ = create_ast(2, AST_WHERE_EXP, E_B_AND, $1, $3); }
+    | expr '^' expr { $$ = create_ast(2, AST_WHERE_EXP, E_B_XOR, $1, $3); }
+    | expr '|' expr { $$ = create_ast(2, AST_WHERE_EXP, E_B_OR, $1, $3); }
+    | '~' expr { $$ = create_ast(1, AST_WHERE_EXP, E_B_NOT, $2); }
+    | expr '=' expr { $$ = create_ast(2, AST_WHERE_EXP, E_EQ, $1, $3); }
+    | expr T_NEQ expr { $$ = create_ast(2, AST_WHERE_EXP, E_NEQ, $1, $3); }
+    | expr '>' expr { $$ = create_ast(2, AST_WHERE_EXP, E_GT, $1, $3); }
+    | expr T_GTE expr { $$ = create_ast(2, AST_WHERE_EXP, E_GTE, $1, $3); }
+    | expr '<' expr { $$ = create_ast(2, AST_WHERE_EXP, E_LT, $1, $3); }
+    | expr T_LTE expr { $$ = create_ast(2, AST_WHERE_EXP, E_LTE, $1, $3); }
+    | expr T_AND expr { $$ = create_ast(2, AST_WHERE_EXP, E_AND, $1, $3); }
+    | expr T_OR expr { $$ = create_ast(2, AST_WHERE_EXP, E_OR, $1, $3); }
+    | T_NOT expr { $$ = create_ast(1, AST_WHERE_EXP, E_NOT, $2); }
+    | '(' expr ')' { $$ = $2; }
     ;
 
 cols_stmt: 
       T_IDENTIFIER { $$ = create_ast(1, AST_EXPECT_COLS, -1, $1);}
     | cols_stmt ',' T_IDENTIFIER { $$ = ast_add_child($1, $3); }
-    ;
-    
-compare: 
-      T_EQ {$$ = EQ;}
-    | T_NEQ {$$ = NEQ;}
-    | T_LT {$$ = LT;}
-    | T_LTE {$$ = LTE;}
-    | T_GT {$$ = GT;}
-    | T_GTE {$$ = GTE;}
+    | T_LITERAL { $$ = create_ast(1, AST_EXPECT_COLS, -1, $1);}
+    | cols_stmt ',' T_LITERAL { $$ = ast_add_child($1, $3); }
     ;
 
 %%
@@ -144,6 +164,6 @@ int yyerror(char *s)
 {
     extern int yylineno;
     extern char* yytext;
-    printf("line %d: %s occur near %s\n", yylineno, s, yytext);
+    printf("line %d: %s occur near \" %s\n \"", yylineno, s, yytext);
     return 1;
 }
