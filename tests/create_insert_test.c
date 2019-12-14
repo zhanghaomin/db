@@ -1,6 +1,6 @@
-#include "ast.h"
-#include "table.h"
-#include "util.h"
+#include "include/ast.h"
+#include "include/table.h"
+#include "include/util.h"
 #include <assert.h>
 #include <unistd.h>
 
@@ -19,7 +19,7 @@ void UNUSED assert_eq_str(char* str, char* str2)
 int main(int argc UNUSED, char const* argv[] UNUSED)
 {
     FILE* f;
-    f = fopen("test.sql", "r+");
+    f = fopen("./tests/create_insert_test.sql", "r+");
     char s[4096];
     lex_read_line(f, s, 4096);
 
@@ -36,14 +36,8 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     assert(t->row_count == 0);
     assert(t->max_page_num == 0);
 
-    // for (int i = 0; i < MAX_PAGE_CNT_P_TABLE; i++) {
-    //     assert(t->pager->pages[i] == NULL);
-    //     assert(t->free_map[i] == PAGE_SIZE - sizeof(t->pager->pages[i]->header));
-    // }
-
     RowFmt* rf;
     rf = t->row_fmt;
-    // CREATE TABLE `txzj_miniapp_white_list` ( `id` int(11) , `shop_id` int(20), `nick` char(255) , `online_code` varchar(256), `create_time` int(20),  `update_time` int(20)  );
 
     assert_eq_str(rf->origin_cols_name[0], "id");
     assert_eq_str(rf->static_cols_name[0], "id");
@@ -94,12 +88,6 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     }
 
     printf("insert pass\n");
-
-    Cursor* c;
-    c = cursor_init(t);
-    traverse_table(c);
-    printf("cursor pass\n");
-    cursor_destory(c);
     db_destory(d);
     fclose(f);
     return 0;

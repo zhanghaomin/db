@@ -1,12 +1,8 @@
 .DS_Store
 a.out
 .vscode/
-lex.yy.c
-parser.tab.c
-parser.tab.h
 db
 *.dSYM/
-*_test
+*test
 *.dat
-1.txt
-bak/
+src/obj/

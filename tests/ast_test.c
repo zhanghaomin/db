@@ -1,6 +1,6 @@
-#include "ast.h"
-#include "table.h"
-#include "util.h"
+#include "include/ast.h"
+#include "include/table.h"
+#include "include/util.h"
 #include <assert.h>
 #include <unistd.h>
 
@@ -19,7 +19,7 @@ void UNUSED assert_eq_str(char* str, char* str2)
 int main(int argc UNUSED, char const* argv[] UNUSED)
 {
     FILE* f;
-    f = fopen("test_ast.sql", "r+");
+    f = fopen("./tests/ast_test.sql", "r+");
     char s[4096];
     lex_read_line(f, s, 4096);
     print_ast(G_AST);

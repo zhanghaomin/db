@@ -9,6 +9,16 @@
 #define max_child_cnt(_kind) ((_kind) >> CHILD_CNT_OFFSET)
 #define get_kind_offset(_kind) ((_kind) - (max_child_cnt(_kind) << CHILD_CNT_OFFSET))
 
+#define get_kind_name(_kind) ({                                                   \
+    const char* _name;                                                            \
+    if (child_is_unlimited(_kind)) {                                              \
+        _name = UnlimitedKindNameMap[get_kind_offset(_kind)];                     \
+    } else {                                                                      \
+        _name = LimitedKindNameMap[max_child_cnt(_kind)][get_kind_offset(_kind)]; \
+    }                                                                             \
+    _name;                                                                        \
+})
+
 static const char* LimitedKindNameMap[][1024] UNUSED = {
     { "AST_VAL" }, // 0 child
     { "AST_TABLE", "AST_ORDER_BY_COL", "AST_WHERE_TOP_EXP" }, // 1 child
@@ -19,16 +29,6 @@ static const char* LimitedKindNameMap[][1024] UNUSED = {
 };
 
 static const char* UnlimitedKindNameMap[] UNUSED = { "AST_EXPECT_COLS", "AST_COL_FMT_LIST", "AST_INSERT_ROW_LIST", "AST_INSERT_VAL_LIST", "AST_ORDER_BY" };
-
-#define get_kind_name(_kind) ({                                                   \
-    const char* _name;                                                            \
-    if (child_is_unlimited(_kind)) {                                              \
-        _name = UnlimitedKindNameMap[get_kind_offset(_kind)];                     \
-    } else {                                                                      \
-        _name = LimitedKindNameMap[max_child_cnt(_kind)][get_kind_offset(_kind)]; \
-    }                                                                             \
-    _name;                                                                        \
-})
 
 typedef enum {
     // 0 child

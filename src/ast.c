@@ -1,5 +1,5 @@
-#include "ast.h"
-#include "util.h"
+#include "include/ast.h"
+#include "include/util.h"
 #include <assert.h>
 #include <stdarg.h>
 

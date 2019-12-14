@@ -1,9 +1,9 @@
 %option noyywrap nodefault noyylineno case-insensitive nounput noinput
 
 %{
-#include "ast.h"
-#include "parser.tab.h"
-#include "util.h"
+#include "include/ast.h"
+#include "include/parser.h"
+#include "include/util.h"
 
 static char* escape_str(char *s, int s_len, char c);
 int yyerror(char *s);

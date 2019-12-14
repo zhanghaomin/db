@@ -1,5 +1,5 @@
-#include "table.h"
-#include "util.h"
+#include "include/table.h"
+#include "include/util.h"
 #include <assert.h>
 #include <ctype.h>
 #include <stdio.h>

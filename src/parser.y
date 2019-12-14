@@ -1,8 +1,8 @@
 %{
 #include <stdio.h>
 #include <stdarg.h>
-#include "ast.h"
-#include "util.h"
+#include "include/ast.h"
+#include "include/util.h"
 
 int yylex();
 int yyerror(char *s);
@@ -23,10 +23,10 @@ int yyerror(char *s);
 %left T_OR
 %left T_AND
 %left T_NOT
-%left "=" "<" ">" T_LTE T_GTE T_NEQ
-%left "+" "-" "&" "^" "|" 
-%left "*" "/" "%"
-%left "~"
+%left '=' '<' '>' T_LTE T_GTE T_NEQ
+%left '+' '-' '&' '^' '|' 
+%left '*' '/' '%'
+%left '~'
 
 
 %union {

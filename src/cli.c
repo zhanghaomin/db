@@ -1,4 +1,4 @@
-#include "ast.h"
+#include "include/ast.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,7 +20,7 @@ int main(int argc, char const* argv[])
     yyrestart(stdin);
 
     while (yyparse() == 0) {
-        print_ast(G_AST, 1, 1);
+        print_ast(G_AST);
         printf("cmd > ");
         fflush(stdout);
     }

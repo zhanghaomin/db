@@ -1,22 +1,40 @@
-tmp = parser.tab.c lex.yy.c
-common = ht.c util.c ast.c 
+CC = gcc
+CFLAGS = -I. -g -Wall -w
+IDIR = include
 
-db: $(tmp)
-	gcc -Wall -W -g -o db $(tmp) $(common) cli.c
+LEX = flex
+DFT_PARSER_H = parser.h
+YACC = bison --defines=$(IDIR)/$(DFT_PARSER_H) -y
 
-test_table: $(tmp)
-	gcc -Wall -W -g -o table_test table_test.c table.c $(common) $(tmp) && ./table_test
+TDIR = tests
+SDIR = src
+ODIR = src/obj
 
-test_persist: $(tmp)
-	gcc -Wall -W -g -o persist_test persist_test.c table.c $(common) $(tmp) && ./persist_test
+_TOBJ = ast_test.o create_insert_test.o persist_test.o
+TOBJ = $(patsubst %, $(ODIR)/%, $(_TOBJ))
 
-test_ast: $(tmp)
-	gcc -Wall -W -g -o ast_test ast_test.c table.c $(common) $(tmp) && ./ast_test
+_OBJ = ast.o ht.o parser.o scanner.o table.o util.o
+OBJ = $(patsubst %, $(ODIR)/%, $(_OBJ))
 
-parser.tab.c: 
-	bison -d parser.y
-lex.yy.c: 
-	flex scanner.l
+_DEP = ast.h ht.h table.h util.h
+DEP = $(patsubst %, $(IDIR)/%, $(_DEP))
+
+$(ODIR)/%.o: $(SDIR)/%.c $(DEP)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(ODIR)/%_test.o: $(TDIR)/%_test.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+test: $(OBJ) $(TOBJ)
+	for i in $(TOBJ); do \
+		$(CC) $(CFLAGS) -o $@ $(OBJ) $$i && ./$@; \
+	done
+
+scanner.o: scanner.l
+
+parser.o: parser.y
+
+.PHONY: clean
 
 clean:
-	rm -f db ast_test table_test persist_test parser.tab.h $(tmp)
+	rm -rf test *.dat $(ODIR)/*.o $(IDIR)/$(DFT_PARSER_H)

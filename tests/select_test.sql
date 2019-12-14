@@ -1,0 +1,1 @@
+select * from txzj_miniapp_white_list where id = 1;
