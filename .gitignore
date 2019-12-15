@@ -6,3 +6,5 @@ db
 *test
 *.dat
 src/obj/
+src/obj/dummy.txt
+src/obj/dummy.txt
