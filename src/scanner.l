@@ -38,21 +38,28 @@ int yyerror(char *s);
 ">=" {return T_GTE;}
 
 [a-zA-Z_][a-zA-Z0-9_]* {
-    yylval.ast = (Ast *)create_val_ast(STRING, yytext);
+    yylval.ast = (Ast *)CREATE_AV(AVT_ID, yytext);
+    return T_IDENTIFIER;
+}
+`([^`]|\\`)+` {
+    char *s;
+    s = escape_str(yytext+1, yyleng-2, yytext[0]);
+    yylval.ast = (Ast *)CREATE_AV(AVT_ID, s);
+    free(s);
     return T_IDENTIFIER;
 }
 -?[0-9]+ { 
-    yylval.ast = (Ast *)create_val_ast(INTEGER, atoi(yytext));
+    yylval.ast = (Ast *)CREATE_AV(AVT_INT, atoi(yytext));
     return T_NUMBER;
 }
 -?[0-9]+"."[0-9]+ { 
-    yylval.ast = (Ast *)create_val_ast(DOUBLE, atof(yytext));
+    yylval.ast = (Ast *)CREATE_AV(AVT_DOUBLE, atof(yytext));
     return T_NUMBER;
 }
-'([^']|\\')+'|\"([^"]|\\\")+\"|`([^`]|\\`)+` {
+'([^']|\\')+'|\"([^"]|\\\")+\" {
     char *s;
     s = escape_str(yytext+1, yyleng-2, yytext[0]);
-    yylval.ast = (Ast *)create_val_ast(STRING, s);
+    yylval.ast = (Ast *)CREATE_AV(AVT_STR, s);
     free(s);
     return T_LITERAL;
 }

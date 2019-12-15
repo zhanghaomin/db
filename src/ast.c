@@ -39,13 +39,8 @@ void print_ast_val(AstVal* av, int step, int lasts[])
     print_space(step + 1, 1, lasts);
     printf("val: ");
 
-    if (av->val->type == INTEGER) {
-        printf("%d\n", av->val->val.num);
-    } else if (av->val->type == DOUBLE) {
-        printf("%g\n", av->val->val.d);
-    } else if (av->val->type == STRING) {
-        printf("%s\n", av->val->val.str);
-    }
+    PRINT_AV(av);
+    printf("\n");
 }
 
 void print_ast2(Ast* a, int step, int last, int lasts[])
@@ -111,36 +106,22 @@ Ast* create_ast(int children, AstKind kind, int attr, ...)
     return a;
 }
 
-void dbval_destory(DBVal* d)
-{
-    if (d->type == STRING) {
-        free(d->val.str);
-    }
-
-    free(d);
-}
-
 void ast_destory(Ast* a)
 {
     if (a == NULL) {
         return;
     }
 
-    AstVal* tmp;
-
     if (a->kind == AST_VAL) {
-        tmp = (AstVal*)(a);
-        dbval_destory(tmp->val);
+        if (GET_AV_TYPE(a) == AVT_STR) {
+            free(GET_AV_STR(a));
+        }
         free(a);
         return;
     }
 
     for (int i = 0; i < a->children; i++) {
-        if (a->child[i] != NULL && a->child[i]->kind == AST_VAL) {
-            tmp = (AstVal*)(a->child[i]);
-            dbval_destory(tmp->val);
-            free(a->child[i]);
-        } else {
+        if (a->child[i] != NULL) {
             ast_destory(a->child[i]);
         }
     }

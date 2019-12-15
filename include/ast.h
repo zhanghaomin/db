@@ -53,21 +53,6 @@ typedef enum {
     AST_ORDER_BY
 } AstKind;
 
-typedef enum {
-    INTEGER,
-    DOUBLE,
-    STRING
-} DBValType;
-
-typedef struct {
-    DBValType type;
-    union {
-        int num;
-        double d;
-        char* str;
-    } val;
-} DBVal;
-
 // %left T_OR
 // %left T_AND
 // %left "!" "not"
@@ -94,7 +79,7 @@ typedef enum {
     E_DIV,
     E_MOD,
     E_B_NOT
-} ExpOp;
+} ExprOp;
 
 typedef enum {
     C_INT,
@@ -110,65 +95,97 @@ typedef struct _Ast {
     struct _Ast** child;
 } Ast;
 
+typedef enum {
+    AVT_INT,
+    AVT_DOUBLE,
+    AVT_ID,
+    AVT_STR
+} AstValType;
+
 typedef struct {
     AstKind kind;
-    DBVal* val;
+    AstValType type;
+    union {
+        int num;
+        double d;
+        char* str;
+    } val;
 } AstVal;
 
-#define create_val_ast(_t, _v) ({         \
-    AstVal* _va;                          \
-    _va = smalloc(sizeof(AstVal));        \
-    _va->kind = AST_VAL;                  \
-    _va->val = smalloc(sizeof(DBVal));    \
-    _va->val = DB_VAl_##_t(_va->val, _v); \
-    _va;                                  \
+#define CREATE_AV(_t, _v) ({       \
+    AstVal* _va;                   \
+    _va = smalloc(sizeof(AstVal)); \
+    _va->kind = AST_VAL;           \
+    _t##_CTOR(_va, _v);            \
+    _va;                           \
 })
 
-#define DB_VAl_INTEGER(_v, _i) ({ \
-    _v->type = INTEGER;           \
-    _v->val.num = _i;             \
-    _v;                           \
+#define AVT_INT_CTOR(_v, _i) ({ \
+    _v->type = AVT_INT;         \
+    _v->val.num = _i;           \
+    _v;                         \
 })
 
-#define DB_VAl_STRING(_v, _s) ({ \
-    _v->type = STRING;           \
-    _v->val.str = strdup(_s);    \
-    _v;                          \
+#define AVT_DOUBLE_CTOR(_v, _i) ({ \
+    _v->type = AVT_DOUBLE;         \
+    _v->val.num = _i;              \
+    _v;                            \
 })
 
-#define DB_VAl_DOUBLE(_v, _d) ({ \
-    _v->type = DOUBLE;           \
-    _v->val.d = _d;              \
-    _v;                          \
+#define AVT_ID_CTOR(_v, _s) ({ \
+    _v->type = AVT_ID;         \
+    _v->val.str = strdup(_s);  \
+    _v;                        \
 })
 
-#define AST_VAL_STR(_ast) ({         \
-    ((AstVal*)(_ast))->val->val.str; \
+#define AVT_STR_CTOR(_v, _s) ({ \
+    _v->type = AVT_STR;         \
+    _v->val.str = strdup(_s);   \
+    _v;                         \
 })
 
-#define AST_VAL_DOUBLE(_ast) ({    \
-    ((AstVal*)(_ast))->val->val.d; \
+#define GET_AV_ID(_ast) ({      \
+    ((AstVal*)(_ast))->val.str; \
 })
 
-#define AST_VAL_INT(_ast) ({         \
-    ((AstVal*)(_ast))->val->val.num; \
+#define GET_AV_STR(_ast) ({     \
+    ((AstVal*)(_ast))->val.str; \
 })
 
-#define AST_VAL_TYPE(_ast) ({     \
-    ((AstVal*)(_ast))->val->type; \
+#define GET_AV_DOUBLE(_ast) ({ \
+    ((AstVal*)(_ast))->val.d;  \
 })
 
-#define AST_VAL_LEN(_ast) ({                    \
-    int _size;                                  \
-    if (AST_VAL_TYPE(_ast) == DOUBLE) {         \
-        _size = sizeof(double);                 \
-    } else if (AST_VAL_TYPE(_ast) == INTEGER) { \
-        _size = sizeof(int);                    \
-    } else {                                    \
-        _size = strlen(AST_VAL_STR(_ast)) + 1;  \
-    }                                           \
-    _size;                                      \
+#define GET_AV_INT(_ast) ({     \
+    ((AstVal*)(_ast))->val.num; \
 })
+
+#define GET_AV_TYPE(_ast) ({ \
+    ((AstVal*)(_ast))->type; \
+})
+
+#define GET_AV_LEN(_ast) ({                    \
+    int _size;                                 \
+    if (GET_AV_TYPE(_ast) == AVT_DOUBLE) {     \
+        _size = sizeof(double);                \
+    } else if (GET_AV_TYPE(_ast) == AVT_INT) { \
+        _size = sizeof(int);                   \
+    } else {                                   \
+        _size = strlen(GET_AV_STR(_ast)) + 1;  \
+    }                                          \
+    _size;                                     \
+})
+
+#define PRINT_AV(_ast)                             \
+    do {                                           \
+        if (GET_AV_TYPE(_ast) == AVT_DOUBLE) {     \
+            printf("%g", GET_AV_DOUBLE(_ast));     \
+        } else if (GET_AV_TYPE(_ast) == AVT_INT) { \
+            printf("%d", GET_AV_INT(_ast));        \
+        } else {                                   \
+            printf("%s", GET_AV_STR(_ast));        \
+        }                                          \
+    } while (0);
 
 Ast* create_ast(int children, AstKind kind, int attr, ...);
 Ast* ast_add_child(Ast* a, Ast* child);

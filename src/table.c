@@ -220,7 +220,7 @@ void println_rows(Table* t, QueryResultList* qrl, int qrl_len, int qr_len)
     free(paddings);
 }
 
-static void destory_query_result_list(QueryResultList* qrl, int qrl_len, int qr_len)
+void destory_query_result_list(QueryResultList* qrl, int qrl_len, int qr_len)
 {
     for (int i = 0; i < qrl_len; i++) {
         for (int j = 0; j < qr_len; j++) {
@@ -348,7 +348,7 @@ int cacl_serialized_row_len(RowFmt* rf, Ast* val_list)
 
         if (cf->is_dynamic) { // 动态属性需要额外空间储存偏移量
             result += sizeof(int);
-            result += AST_VAL_LEN(val_list->child[i]);
+            result += GET_AV_LEN(val_list->child[i]);
         } else { // 静态属性定长
             result += cf->len;
         }
@@ -364,14 +364,14 @@ static inline void copy_ast_val(void* dest, AstVal* a)
     int i;
     double d;
 
-    if (AST_VAL_TYPE(a) == INTEGER) {
-        i = AST_VAL_INT(a);
-        memcpy(dest, &i, sizeof(int));
-    } else if (AST_VAL_TYPE(a) == STRING) {
-        memcpy(dest, AST_VAL_STR(a), AST_VAL_LEN(a));
+    if (GET_AV_TYPE(a) == AVT_INT) {
+        i = GET_AV_INT(a);
+        memcpy(dest, &i, GET_AV_LEN(a));
+    } else if (GET_AV_TYPE(a) == AVT_DOUBLE) {
+        d = GET_AV_DOUBLE(a);
+        memcpy(dest, &d, GET_AV_LEN(a));
     } else {
-        d = AST_VAL_DOUBLE(a);
-        memcpy(dest, &d, sizeof(double));
+        memcpy(dest, GET_AV_STR(a), GET_AV_LEN(a));
     }
 }
 
@@ -543,7 +543,7 @@ int serialize_row(void* store, RowFmt* rf, Ast* val_list)
 
         if (!cf->is_dynamic) {
             val = (AstVal*)(val_list->child[i]);
-            val_len = AST_VAL_LEN(val);
+            val_len = GET_AV_LEN(val);
             memcpy(store, &val_len, sizeof(int));
             store += sizeof(int);
             copy_ast_val(store, val);
@@ -560,7 +560,7 @@ int serialize_row(void* store, RowFmt* rf, Ast* val_list)
 
         if (cf->is_dynamic) {
             val = (AstVal*)(val_list->child[i]);
-            val_len = AST_VAL_LEN(val);
+            val_len = GET_AV_LEN(val);
             offset = store - data_start;
             memcpy(dynamic_offset_store, &offset, sizeof(int));
             dynamic_offset_store += sizeof(int);
@@ -580,33 +580,37 @@ int serialize_row(void* store, RowFmt* rf, Ast* val_list)
     return 0;
 }
 
-// int get_col_val(void* row, RowFmt* rf, char* col_name, col_value* cv)
-// {
-//     int col_num, dynamic_col_num, static_col_num;
-//     void* col;
-//     ColFmt cf;
-//     col_num = get_col_num_by_col_name(rf, col_name);
+QueryResultVal* get_col_val(void* row, RowFmt* rf, char* col_name)
+{
+    int col_num, dynamic_col_num, static_col_num, len;
+    void* col;
+    ColFmt cf;
+    QueryResultVal* qrv;
+    qrv = smalloc(sizeof(QueryResultVal));
+    col_num = get_col_num_by_col_name(rf, col_name);
+    row += sizeof(RowHeader);
 
-//     if (col_num == -1) {
-//         return -1;
-//     }
+    if (col_num == -1) {
+        return NULL;
+    }
 
-//     cf = rf->cols_fmt[col_num];
-//     cv->type = cf.type;
+    cf = rf->cols_fmt[col_num];
+    qrv->type = cf.type;
 
-//     if (cf.is_dynamic) {
-//         dynamic_col_num = get_dynamic_col_num_by_col_name(rf, col_name);
-//         col = row + sizeof(int) * dynamic_col_num;
-//     } else {
-//         static_col_num = get_static_col_num_by_col_name(rf, col_name);
-//         col = row + sizeof(int) * rf->dynamic_cols_count + static_col_num * sizeof(int);
-//     }
+    if (cf.is_dynamic) {
+        dynamic_col_num = get_dynamic_col_num_by_col_name(rf, col_name);
+        col = row + sizeof(int) * dynamic_col_num;
+    } else {
+        static_col_num = get_static_col_num_by_col_name(rf, col_name);
+        col = row + sizeof(int) * rf->dynamic_cols_count + static_col_num * sizeof(int);
+    }
 
-//     memcpy(&cv->len, col, sizeof(int));
-//     cv->data = smalloc(cv->len);
-//     memcpy(&cv->data, col + sizeof(int), cv->len);
-//     return 0;
-// }
+    memcpy(&len, col, sizeof(int)); // len
+    col += sizeof(int);
+    qrv->data = smalloc(len);
+    memcpy(qrv->data, col, len);
+    return qrv;
+}
 
 /*
  * 返回反序列化好的字段数组, 顺序和定义时的一致
@@ -675,8 +679,8 @@ int insert_row(DB* d, Ast* a)
     table_name = a->child[0];
     row_list = a->child[1];
 
-    if ((t = open_table(d, AST_VAL_STR(table_name->child[0]))) == NULL) {
-        printf("table %s not exist\n", AST_VAL_STR(table_name->child[0]));
+    if ((t = open_table(d, GET_AV_STR(table_name->child[0]))) == NULL) {
+        printf("table %s not exist\n", GET_AV_STR(table_name->child[0]));
         return -1;
     }
 
@@ -693,7 +697,6 @@ int insert_row(DB* d, Ast* a)
         serialize_row(get_page_tail(page), t->row_fmt, val_list);
         page->header.row_count++;
         page->header.tail += size;
-        // printf("")
         t->row_count++;
         t->free_map[page->header.page_num] -= size;
     }
@@ -701,56 +704,124 @@ int insert_row(DB* d, Ast* a)
     return 1;
 }
 
-// int do_cmp_op(col_value* op1, input_literal* op2, cmp_op op)
-// {
-//     // maybe we need tranfer type
-// }
+int cmd_compare_eq(Ast* op1, Ast* op2)
+{
+    return 1;
+}
 
-// int where_condition_pass(void* row, RowFmt* rf, where_stmt* ws)
-// {
-//     col_value cv;
-//     int res;
+int get_where_expr_res(Table* t, void* row, Ast* where_expr)
+{
+    assert(where_expr->kind == AST_WHERE_EXP);
 
-//     if (ws->is_leaf) {
-//         get_col_val(row, rf, ws->children[0].val->data, &cv);
-//         res = do_cmp_op(&cv, ws->children[1].val, ws->op.compare);
-//         destory_col_val(&cv);
-//         return res;
-//     }
+    Ast *op1, *op2;
+    ExprOp op;
 
-//     if (ws->op.logic == W_AND) {
-//         return where_condition_pass(row, rf, ws->children[0].stmt) && where_condition_pass(row, rf, ws->children[1].stmt);
-//     } else if (ws->op.logic == W_OR) {
-//         return where_condition_pass(row, rf, ws->children[0].stmt) || where_condition_pass(row, rf, ws->children[1].stmt);
-//     }
+    op1 = where_expr->child[0];
+    op2 = where_expr->child[1];
+    op = where_expr->attr;
 
-//     // never happen
-//     exit(-1);
-// }
+    if (op == E_EQ) {
+        return cmd_compare_eq(op1, op2);
+    }
 
-// result_rows select_row(Cursor* c, char** expect_cols, int expect_cols_count, where_stmt* ws, int* row_count)
-// {
-//     int rc = 0;
-//     result_rows rows;
+    return 0;
+}
 
-//     rows = smalloc(sizeof(result_row));
-//     cursor_rewind(c);
+QueryResult* filter_row(Table* t, Cursor* c, Ast* expect_cols, Ast* where_expr)
+{
+    QueryResult* qr;
+    QueryResultVal* qrv;
 
-//     while (!cursor_is_end(c)) {
-//         if (where_condition_pass(cursor_value(c), c->table->row_fmt, ws)) {
-//             rows = realloc(rows, rc * sizeof(result_row));
-//             rows[rc] = smalloc(sizeof(col_value) * expect_cols_count);
+    while (!cursor_is_end(c)) {
+        if (get_where_expr_res(t, cursor_value(c), where_expr) == 1) {
+            qr = smalloc(expect_cols->children * sizeof(QueryResultVal*));
+            // 符合条件,返回这条数据
+            for (int i = 0; i < expect_cols->children; i++) {
+                if (GET_AV_TYPE(expect_cols->child[i]) == AVT_STR) {
+                    // 直接返回这个字符串
+                    qrv->type = C_CHAR;
+                    qrv->data = strdup(GET_AV_STR(expect_cols->child[i]));
+                } else if (GET_AV_TYPE(expect_cols->child[i]) == AVT_DOUBLE) {
+                    qrv->type = C_INT;
+                    qrv->data = smalloc(sizeof(double));
+                    copy_ast_val(qrv->data, (AstVal*)(expect_cols->child[i]));
+                } else if (GET_AV_TYPE(expect_cols->child[i]) == AVT_INT) {
+                    qrv->type = C_INT;
+                    qrv->data = smalloc(sizeof(int));
+                    copy_ast_val(qrv->data, (AstVal*)(expect_cols->child[i]));
+                } else {
+                    // TODO: select *
+                    qrv = get_col_val(cursor_value(c), t->row_fmt, GET_AV_STR(expect_cols->child[i]));
+                }
 
-//             for (int i = 0; i < expect_cols_count; i++) {
-//                 get_col_val(cursor_value(c), c->table->row_fmt, expect_cols[i], &rows[rc][i]);
-//             }
+                qr[i] = qrv;
+            }
 
-//             rc++;
-//         }
-//     }
+            // 移动指针
+            cursor_next(c);
+            return qr;
+        } else {
+            // 继续下一条
+            cursor_next(c);
+        }
+    }
 
-//     return rows;
-// }
+    return NULL;
+}
+
+int check_and_get_select_col_count(Table* t, Ast* expect_cols)
+{
+    int count = 0;
+
+    for (int i = 0; i < expect_cols->children; i++) {
+        if (GET_AV_TYPE(expect_cols->child[i]) == AVT_ID) {
+            if (strcmp(GET_AV_STR(expect_cols->child[i]), "*") == 0) {
+                count += t->row_fmt->origin_cols_count;
+            } else {
+                if (get_col_num_by_col_name(t->row_fmt, GET_AV_STR(expect_cols->child[i])) == -1) {
+                    printf("col %s not exist\n", GET_AV_STR(expect_cols->child[i]));
+                    return -1;
+                }
+            }
+        } else {
+            count++;
+        }
+    }
+
+    return count;
+}
+
+QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_count)
+{
+    assert(select_ast->kind == AST_SELECT);
+
+    Ast *table_name, *expect_cols, *where_top_list;
+    Table* t;
+    QueryResultList* qrl = NULL;
+    QueryResult* qr;
+    Cursor* c;
+
+    expect_cols = select_ast->child[0];
+    table_name = select_ast->child[1];
+    where_top_list = select_ast->child[2];
+    t = open_table(d, GET_AV_STR(table_name->child[0]));
+    c = cursor_init(t);
+
+    *col_count = check_and_get_select_col_count(t, expect_cols);
+
+    if (*col_count == -1) {
+        *row_count = 0;
+        return NULL;
+    }
+
+    while ((qr = filter_row(t, c, expect_cols, where_top_list->child[0])) != NULL) {
+        (*row_count)++;
+        qrl = realloc(qrl, (*row_count) * sizeof(QueryResult*));
+        qrl[(*row_count) - 1] = qr;
+    }
+
+    return qrl;
+}
 
 // | len | table_count | table_fmt | ... |
 DB* db_init()
@@ -824,11 +895,11 @@ static void parse_fmt_list(Ast* a, RowFmt* rf)
 
         if (col_fmt->attr == C_INT || col_fmt->attr == C_CHAR || col_fmt->attr == C_DOUBLE) {
             rf->static_cols_name = realloc(rf->static_cols_name, sizeof(char*) * (++rf->static_cols_count));
-            rf->static_cols_name[rf->static_cols_count - 1] = strdup(AST_VAL_STR(col_fmt->child[0]));
+            rf->static_cols_name[rf->static_cols_count - 1] = strdup(GET_AV_STR(col_fmt->child[0]));
             rf->cols_fmt[i].is_dynamic = 0;
         } else if (col_fmt->attr == C_VARCHAR) {
             rf->dynamic_cols_name = realloc(rf->dynamic_cols_name, sizeof(char*) * (++rf->dynamic_cols_count));
-            rf->dynamic_cols_name[rf->dynamic_cols_count - 1] = strdup(AST_VAL_STR(col_fmt->child[0]));
+            rf->dynamic_cols_name[rf->dynamic_cols_count - 1] = strdup(GET_AV_STR(col_fmt->child[0]));
             rf->cols_fmt[i].is_dynamic = 1;
         }
 
@@ -837,10 +908,10 @@ static void parse_fmt_list(Ast* a, RowFmt* rf)
         } else if (col_fmt->attr == C_INT) {
             rf->cols_fmt[i].len = sizeof(int);
         } else {
-            rf->cols_fmt[i].len = AST_VAL_INT(col_fmt->child[1]);
+            rf->cols_fmt[i].len = GET_AV_INT(col_fmt->child[1]);
         }
 
-        rf->origin_cols_name[i] = strdup(AST_VAL_STR(col_fmt->child[0]));
+        rf->origin_cols_name[i] = strdup(GET_AV_STR(col_fmt->child[0]));
         rf->cols_fmt[i].type = col_fmt->attr;
     }
 }
@@ -856,7 +927,7 @@ int create_table(DB* d, Ast* a)
     table_name = a->child[0]->child[0];
     fmt_list = a->child[1];
     t = smalloc(sizeof(Table));
-    t->name = strdup(AST_VAL_STR(table_name));
+    t->name = strdup(GET_AV_STR(table_name));
 
     if (ht_find(d->tables, t->name) != NULL) {
         printf("table exist\n");
@@ -877,7 +948,7 @@ int create_table(DB* d, Ast* a)
     t->row_fmt = smalloc(sizeof(RowFmt));
     get_page(t, 0);
     parse_fmt_list(fmt_list, t->row_fmt);
-    ht_insert(d->tables, AST_VAL_STR(table_name), t);
+    ht_insert(d->tables, GET_AV_STR(table_name), t);
     return 0;
 }
 

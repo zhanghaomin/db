@@ -73,7 +73,6 @@ col_fmt_list_stmt:
 
 col_fmt_stmt:
       T_IDENTIFIER col_type '(' T_NUMBER ')' { $$ = create_ast(2, AST_COL_FMT, $2, $1, $4); }
-    | T_LITERAL col_type '(' T_NUMBER ')' { $$ = create_ast(2, AST_COL_FMT, $2, $1, $4); }
     ;
 
 col_type: 
@@ -101,9 +100,6 @@ order_by_col:
       T_IDENTIFIER { $$ = create_ast(1, AST_ORDER_BY_COL, 0, $1); }
     | T_IDENTIFIER T_ASC { $$ = create_ast(1, AST_ORDER_BY_COL, 0, $1); }
     | T_IDENTIFIER T_DESC { $$ = create_ast(1, AST_ORDER_BY_COL, 1, $1); }
-    | T_LITERAL { $$ = create_ast(1, AST_ORDER_BY_COL, 0, $1); }
-    | T_LITERAL T_ASC { $$ = create_ast(1, AST_ORDER_BY_COL, 0, $1); }
-    | T_LITERAL T_DESC { $$ = create_ast(1, AST_ORDER_BY_COL, 1, $1); }
     ;
 
 limit:
@@ -112,13 +108,12 @@ limit:
     ;
 
 limit_clause:
-      T_NUMBER { $$ = create_ast(2, AST_LIMIT, -1, (Ast *)create_val_ast(INTEGER, 0), $1); }
+      T_NUMBER { $$ = create_ast(2, AST_LIMIT, -1, (Ast *)CREATE_AV(AVT_INT, 0), $1); }
     | T_NUMBER ',' T_NUMBER { $$ = create_ast(2, AST_LIMIT, -1, $1, $3); }
     ;
 
 table_name:
       T_IDENTIFIER { $$ = create_ast(1, AST_TABLE, -1, $1); }
-    | T_LITERAL { $$ = create_ast(1, AST_TABLE, -1, $1); }
     ;
 
 where:
@@ -153,6 +148,8 @@ expr:
 
 cols_stmt: 
       T_IDENTIFIER { $$ = create_ast(1, AST_EXPECT_COLS, -1, $1);}
+    | T_NUMBER { $$ = create_ast(1, AST_EXPECT_COLS, -1, $1);}
+    | '*' { $$ = create_ast(1, AST_EXPECT_COLS, -1, CREATE_AV(AVT_ID, "*")); }
     | cols_stmt ',' T_IDENTIFIER { $$ = ast_add_child($1, $3); }
     | T_LITERAL { $$ = create_ast(1, AST_EXPECT_COLS, -1, $1);}
     | cols_stmt ',' T_LITERAL { $$ = ast_add_child($1, $3); }

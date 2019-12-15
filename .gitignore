@@ -6,3 +6,4 @@ db
 *test
 *.dat
 src/obj/
+include/parser.h
