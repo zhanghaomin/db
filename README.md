@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.com/zhanghaomin/db.svg?branch=master)](https://travis-ci.com/zhanghaomin/db)
 # db
 simple database 
 
