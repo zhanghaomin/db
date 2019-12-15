@@ -820,6 +820,7 @@ QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_cou
         qrl[(*row_count) - 1] = qr;
     }
 
+    cursor_destory(c);
     return qrl;
 }
 
