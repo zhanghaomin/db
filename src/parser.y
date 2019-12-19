@@ -153,6 +153,7 @@ cols_stmt:
     | cols_stmt ',' T_IDENTIFIER { $$ = ast_add_child($1, $3); }
     | T_LITERAL { $$ = create_ast(1, AST_EXPECT_COLS, -1, $1);}
     | cols_stmt ',' T_LITERAL { $$ = ast_add_child($1, $3); }
+    | cols_stmt ',' '*' { $$ = ast_add_child($1, CREATE_AV(AVT_ID, "*")); }
     ;
 
 %%

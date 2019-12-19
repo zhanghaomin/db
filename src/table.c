@@ -175,17 +175,11 @@ void println_row(QueryResult* qr, int qr_len, int* padding)
     printf("\n");
 }
 
-void println_rows(Table* t, QueryResultList* qrl, int qrl_len, int qr_len)
+void println_rows(QueryResultList* qrl, int qrl_len, int qr_len)
 {
     int* paddings;
     paddings = scalloc(sizeof(int), qr_len);
     char s[1024];
-
-    for (int i = 0; i < t->row_fmt->origin_cols_count; i++) {
-        if (paddings[i] < (int)strlen(t->row_fmt->origin_cols_name[i])) {
-            paddings[i] = (int)strlen(t->row_fmt->origin_cols_name[i]);
-        }
-    }
 
     for (int i = 0; i < qrl_len; i++) {
         for (int j = 0; j < qr_len; j++) {
@@ -211,12 +205,11 @@ void println_rows(Table* t, QueryResultList* qrl, int qrl_len, int qr_len)
     }
 
     println_row_line(paddings, qr_len);
-    println_table_col_name(t, paddings);
-    println_row_line(paddings, qr_len);
     for (int i = 0; i < qrl_len; i++) {
         println_row(qrl[i], qr_len, paddings);
         println_row_line(paddings, qr_len);
     }
+
     free(paddings);
 }
 
@@ -234,6 +227,20 @@ void destory_query_result_list(QueryResultList* qrl, int qrl_len, int qr_len)
     free(qrl);
 }
 
+QueryResult* get_table_header(Table* t)
+{
+    QueryResult* qr = NULL;
+
+    for (int j = 0; j < t->row_fmt->origin_cols_count; j++) {
+        qr = realloc(qr, sizeof(QueryResultVal*) * (j + 1));
+        qr[j] = smalloc(sizeof(QueryResultVal));
+        qr[j]->data = strdup(t->row_fmt->origin_cols_name[j]);
+        qr[j]->type = C_CHAR;
+    }
+
+    return qr;
+}
+
 void traverse_table(Cursor* c)
 {
     QueryResultList* qrl;
@@ -244,6 +251,8 @@ void traverse_table(Cursor* c)
     qrl = NULL;
 
     int i = 0;
+    qrl = realloc(qrl, (++i) * sizeof(QueryResult*));
+    qrl[i - 1] = get_table_header(c->table);
 
     while (!cursor_is_end(c)) {
         qrl = realloc(qrl, (i + 1) * sizeof(QueryResult*));
@@ -258,7 +267,7 @@ void traverse_table(Cursor* c)
         i++;
     }
 
-    println_rows(c->table, qrl, i, qr_len);
+    println_rows(qrl, i, qr_len);
     destory_query_result_list(qrl, i, qr_len);
 }
 
@@ -582,7 +591,7 @@ int serialize_row(void* store, RowFmt* rf, Ast* val_list)
 
 QueryResultVal* get_col_val(void* row, RowFmt* rf, char* col_name)
 {
-    int col_num, dynamic_col_num, static_col_num, len;
+    int col_num, dynamic_col_num, static_col_num, len, offset;
     void* col;
     ColFmt cf;
     QueryResultVal* qrv;
@@ -599,10 +608,15 @@ QueryResultVal* get_col_val(void* row, RowFmt* rf, char* col_name)
 
     if (cf.is_dynamic) {
         dynamic_col_num = get_dynamic_col_num_by_col_name(rf, col_name);
-        col = row + sizeof(int) * dynamic_col_num;
+        memcpy(&offset, row + sizeof(int) * dynamic_col_num, sizeof(int));
+        col = row + offset;
     } else {
         static_col_num = get_static_col_num_by_col_name(rf, col_name);
-        col = row + sizeof(int) * rf->dynamic_cols_count + static_col_num * sizeof(int);
+        col = row + sizeof(int) * rf->dynamic_cols_count;
+        // 跳过前面的静态字段
+        for (int i = 0; i < static_col_num; i++) {
+            col += sizeof(int) + rf->cols_fmt[i].len;
+        }
     }
 
     memcpy(&len, col, sizeof(int)); // len
@@ -738,14 +752,17 @@ QueryResult* filter_row(Table* t, Cursor* c, Ast* expect_cols, Ast* where_expr)
             // 符合条件,返回这条数据
             for (int i = 0; i < expect_cols->children; i++) {
                 if (GET_AV_TYPE(expect_cols->child[i]) == AVT_STR) {
+                    qrv = smalloc(sizeof(QueryResultVal));
                     // 直接返回这个字符串
                     qrv->type = C_CHAR;
                     qrv->data = strdup(GET_AV_STR(expect_cols->child[i]));
                 } else if (GET_AV_TYPE(expect_cols->child[i]) == AVT_DOUBLE) {
-                    qrv->type = C_INT;
+                    qrv = smalloc(sizeof(QueryResultVal));
+                    qrv->type = C_DOUBLE;
                     qrv->data = smalloc(sizeof(double));
                     copy_ast_val(qrv->data, (AstVal*)(expect_cols->child[i]));
                 } else if (GET_AV_TYPE(expect_cols->child[i]) == AVT_INT) {
+                    qrv = smalloc(sizeof(QueryResultVal));
                     qrv->type = C_INT;
                     qrv->data = smalloc(sizeof(int));
                     copy_ast_val(qrv->data, (AstVal*)(expect_cols->child[i]));
@@ -771,24 +788,52 @@ QueryResult* filter_row(Table* t, Cursor* c, Ast* expect_cols, Ast* where_expr)
 
 int check_and_get_select_col_count(Table* t, Ast* expect_cols)
 {
+    assert(expect_cols->kind == AST_EXPECT_COLS);
     int count = 0;
 
     for (int i = 0; i < expect_cols->children; i++) {
         if (GET_AV_TYPE(expect_cols->child[i]) == AVT_ID) {
+            if (get_col_num_by_col_name(t->row_fmt, GET_AV_STR(expect_cols->child[i])) == -1) {
+                printf("col %s not exist\n", GET_AV_STR(expect_cols->child[i]));
+                return -1;
+            }
             if (strcmp(GET_AV_STR(expect_cols->child[i]), "*") == 0) {
                 count += t->row_fmt->origin_cols_count;
-            } else {
-                if (get_col_num_by_col_name(t->row_fmt, GET_AV_STR(expect_cols->child[i])) == -1) {
-                    printf("col %s not exist\n", GET_AV_STR(expect_cols->child[i]));
-                    return -1;
-                }
+                continue;
             }
-        } else {
-            count++;
         }
+
+        count++;
     }
 
     return count;
+}
+
+QueryResult* get_select_header(Table* t, Ast* expect_cols)
+{
+    assert(expect_cols->kind == AST_EXPECT_COLS);
+    int count = 0;
+    QueryResult* qr = NULL;
+
+    for (int i = 0; i < expect_cols->children; i++) {
+        if (GET_AV_TYPE(expect_cols->child[i]) == AVT_ID && strcmp(GET_AV_STR(expect_cols->child[i]), "*") == 0) {
+            for (int j = 0; j < t->row_fmt->origin_cols_count; j++) {
+                count++;
+                qr = realloc(qr, sizeof(QueryResultVal*) * count);
+                qr[count - 1] = smalloc(sizeof(QueryResultVal));
+                qr[count - 1]->data = strdup(t->row_fmt->origin_cols_name[j]);
+                qr[count - 1]->type = C_CHAR;
+            }
+        } else {
+            count++;
+            qr = realloc(qr, sizeof(QueryResultVal*) * count);
+            qr[count - 1] = smalloc(sizeof(QueryResultVal));
+            qr[count - 1]->data = strdup(GET_AV_STR(expect_cols->child[i]));
+            qr[count - 1]->type = C_CHAR;
+        }
+    }
+
+    return qr;
 }
 
 QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_count)
@@ -806,13 +851,17 @@ QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_cou
     where_top_list = select_ast->child[2];
     t = open_table(d, GET_AV_STR(table_name->child[0]));
     c = cursor_init(t);
-
+    (*row_count) = 0;
     *col_count = check_and_get_select_col_count(t, expect_cols);
 
     if (*col_count == -1) {
         *row_count = 0;
         return NULL;
     }
+
+    (*row_count)++;
+    qrl = realloc(qrl, ((*row_count)) * sizeof(QueryResult*));
+    qrl[(*row_count) - 1] = get_select_header(t, expect_cols);
 
     while ((qr = filter_row(t, c, expect_cols, where_top_list->child[0])) != NULL) {
         (*row_count)++;

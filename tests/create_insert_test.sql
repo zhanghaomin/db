@@ -1,5 +1,5 @@
 CREATE TABLE `txzj_miniapp_white_list` ( `id` int(11) , `shop_id` int(20), `nick` char(255) , `online_code` varchar(256), `create_time` int(20),  `update_time` int(20)  );
-INSERT INTO `txzj_miniapp_white_list` VALUES (1, 541732524, 'qjd', 'https://m.duanqu.com?_ariver_appid=3000000002135593', 1575464074, 1575464074);
+INSERT INTO `txzj_miniapp_white_list` VALUES (1, 541732524, 'qjd', '', 1575464074, 1575464074);
 INSERT INTO `txzj_miniapp_white_list` VALUES (2, 57300079, 'ajxcqjd', 'https://m.duanqu.com?_ariver_appid=3000000002135402', 1575464097, 1575464097);
 INSERT INTO `txzj_miniapp_white_list` VALUES (3, 105615102, 'jbxcqjd', 'https://m.duanqu.com?_ariver_appid=3000000002135871', 1575464160, 1575464160);
 INSERT INTO `txzj_miniapp_white_list` VALUES (4, 103984425, 'jxacqjd', 'https://m.duanqu.com?_ariver_appid=3000000002135881', 1575464192, 1575464192);

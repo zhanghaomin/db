@@ -94,5 +94,6 @@ Table* unserialize_table(void* serialized, int* len);
 void* serialize_table(Table* t, int* len);
 void destory_query_result_list(QueryResultList* qrl, int qrl_len, int qr_len);
 QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_count);
+void println_rows(QueryResultList* qrl, int qrl_len, int qr_len);
 
 #endif

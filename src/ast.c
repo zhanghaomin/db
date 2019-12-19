@@ -113,7 +113,7 @@ void ast_destory(Ast* a)
     }
 
     if (a->kind == AST_VAL) {
-        if (GET_AV_TYPE(a) == AVT_STR) {
+        if (GET_AV_TYPE(a) == AVT_STR || GET_AV_TYPE(a) == AVT_ID) {
             free(GET_AV_STR(a));
         }
         free(a);

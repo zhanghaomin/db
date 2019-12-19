@@ -56,7 +56,7 @@ int yyerror(char *s);
     yylval.ast = (Ast *)CREATE_AV(AVT_DOUBLE, atof(yytext));
     return T_NUMBER;
 }
-'([^']|\\')+'|\"([^"]|\\\")+\" {
+'([^']|\\')*'|\"([^"]|\\\")*\" {
     char *s;
     s = escape_str(yytext+1, yyleng-2, yytext[0]);
     yylval.ast = (Ast *)CREATE_AV(AVT_STR, s);
