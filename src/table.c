@@ -591,7 +591,7 @@ int serialize_row(void* store, RowFmt* rf, Ast* val_list)
 
 QueryResultVal* get_col_val(void* row, RowFmt* rf, char* col_name)
 {
-    int col_num, dynamic_col_num, static_col_num, len, offset;
+    int col_num, dynamic_col_num, len, offset;
     void* col;
     ColFmt cf;
     QueryResultVal* qrv;
@@ -611,11 +611,12 @@ QueryResultVal* get_col_val(void* row, RowFmt* rf, char* col_name)
         memcpy(&offset, row + sizeof(int) * dynamic_col_num, sizeof(int));
         col = row + offset;
     } else {
-        static_col_num = get_static_col_num_by_col_name(rf, col_name);
         col = row + sizeof(int) * rf->dynamic_cols_count;
         // 跳过前面的静态字段
-        for (int i = 0; i < static_col_num; i++) {
-            col += sizeof(int) + rf->cols_fmt[i].len;
+        for (int i = 0; i < col_num; i++) {
+            if (!rf->cols_fmt[i].is_dynamic) {
+                col += sizeof(int) + rf->cols_fmt[i].len;
+            }
         }
     }
 
@@ -718,12 +719,53 @@ int insert_row(DB* d, Ast* a)
     return 1;
 }
 
-int cmd_compare_eq(Ast* op1, Ast* op2)
+int cmd_compare_eq(Table* t, void* row, Ast* op1, Ast* op2)
 {
     return 1;
+    int tmp;
+    ColType op1_type, op2_type;
+    QueryResultVal *op1_qrv, *op2_qrv;
+
+    if (op1->kind == AST_VAL) {
+        if (GET_AV_TYPE(op1) == AVT_ID) {
+            op1_qrv = get_col_val(row, t->row_fmt, GET_AV_STR(op1));
+        } else if (GET_AV_TYPE(op1) == AVT_DOUBLE) {
+            op1_qrv = smalloc(sizeof(QueryResultVal));
+            op1_qrv->type = C_DOUBLE;
+            op1_qrv->data = smalloc(sizeof(double));
+            copy_ast_val(op1_qrv->data, (AstVal*)op1);
+        } else if (GET_AV_TYPE(op1) == AVT_INT) {
+            op1_qrv = smalloc(sizeof(QueryResultVal));
+            op1_qrv->type = C_INT;
+            op1_qrv->data = smalloc(sizeof(int));
+            copy_ast_val(op1_qrv->data, (AstVal*)op1);
+        } else {
+            // AVT_STR
+            op1_qrv = smalloc(sizeof(QueryResultVal));
+            op1_qrv->type = C_INT;
+            op1_qrv->data = smalloc(GET_AV_LEN(op1));
+            copy_ast_val(op1_qrv->data, (AstVal*)op1);
+        }
+    } else if (op1->kind == AST_WHERE_EXP) {
+        op1_qrv = smalloc(sizeof(QueryResultVal));
+        op1_qrv->data = smalloc(sizeof(int));
+        tmp = get_where_expr_res(t, row, op1);
+        memcpy(op1_qrv->data, &tmp, sizeof(int));
+        op1_qrv->type = C_INT;
+    }
+
+    if (op2->kind == AST_VAL) {
+        /* code */
+    } else if (op2->kind == AST_WHERE_EXP) {
+        op2_qrv = smalloc(sizeof(QueryResultVal));
+        op2_qrv->data = smalloc(sizeof(int));
+        tmp = get_where_expr_res(t, row, op2);
+        memcpy(op2_qrv->data, &tmp, sizeof(int));
+        op2_qrv->type = C_INT;
+    }
 }
 
-int get_where_expr_res(Table* t, void* row, Ast* where_expr)
+static int get_where_expr_res(Table* t, void* row, Ast* where_expr)
 {
     assert(where_expr->kind == AST_WHERE_EXP);
 
@@ -735,7 +777,7 @@ int get_where_expr_res(Table* t, void* row, Ast* where_expr)
     op = where_expr->attr;
 
     if (op == E_EQ) {
-        return cmd_compare_eq(op1, op2);
+        return cmd_compare_eq(t, row, op1, op2);
     }
 
     return 0;
@@ -745,6 +787,7 @@ QueryResult* filter_row(Table* t, Cursor* c, Ast* expect_cols, Ast* where_expr)
 {
     QueryResult* qr;
     QueryResultVal* qrv;
+    int col_cnt = 0;
 
     while (!cursor_is_end(c)) {
         if (get_where_expr_res(t, cursor_value(c), where_expr) == 1) {
@@ -756,22 +799,31 @@ QueryResult* filter_row(Table* t, Cursor* c, Ast* expect_cols, Ast* where_expr)
                     // 直接返回这个字符串
                     qrv->type = C_CHAR;
                     qrv->data = strdup(GET_AV_STR(expect_cols->child[i]));
+                    qr[col_cnt++] = qrv;
                 } else if (GET_AV_TYPE(expect_cols->child[i]) == AVT_DOUBLE) {
                     qrv = smalloc(sizeof(QueryResultVal));
                     qrv->type = C_DOUBLE;
                     qrv->data = smalloc(sizeof(double));
                     copy_ast_val(qrv->data, (AstVal*)(expect_cols->child[i]));
+                    qr[col_cnt++] = qrv;
                 } else if (GET_AV_TYPE(expect_cols->child[i]) == AVT_INT) {
                     qrv = smalloc(sizeof(QueryResultVal));
                     qrv->type = C_INT;
                     qrv->data = smalloc(sizeof(int));
                     copy_ast_val(qrv->data, (AstVal*)(expect_cols->child[i]));
+                    qr[col_cnt++] = qrv;
                 } else {
-                    // TODO: select *
-                    qrv = get_col_val(cursor_value(c), t->row_fmt, GET_AV_STR(expect_cols->child[i]));
+                    if (strcmp(GET_AV_STR(expect_cols->child[i]), "*") == 0) {
+                        for (int j = 0; j < t->row_fmt->origin_cols_count; j++) {
+                            col_cnt++;
+                            qr = realloc(qr, col_cnt * sizeof(QueryResultVal*));
+                            qr[col_cnt - 1] = get_col_val(cursor_value(c), t->row_fmt, t->row_fmt->origin_cols_name[j]);
+                        }
+                    } else {
+                        qrv = get_col_val(cursor_value(c), t->row_fmt, GET_AV_STR(expect_cols->child[i]));
+                        qr[col_cnt++] = qrv;
+                    }
                 }
-
-                qr[i] = qrv;
             }
 
             // 移动指针
@@ -793,13 +845,13 @@ int check_and_get_select_col_count(Table* t, Ast* expect_cols)
 
     for (int i = 0; i < expect_cols->children; i++) {
         if (GET_AV_TYPE(expect_cols->child[i]) == AVT_ID) {
-            if (get_col_num_by_col_name(t->row_fmt, GET_AV_STR(expect_cols->child[i])) == -1) {
-                printf("col %s not exist\n", GET_AV_STR(expect_cols->child[i]));
-                return -1;
-            }
             if (strcmp(GET_AV_STR(expect_cols->child[i]), "*") == 0) {
                 count += t->row_fmt->origin_cols_count;
                 continue;
+            }
+            if (get_col_num_by_col_name(t->row_fmt, GET_AV_STR(expect_cols->child[i])) == -1) {
+                printf("col %s not exist\n", GET_AV_STR(expect_cols->child[i]));
+                return -1;
             }
         }
 

@@ -7,12 +7,6 @@
 #include "ast.h"
 #include "ht.h"
 
-// typedef enum {
-//     Q_INT,
-//     Q_STR,
-//     Q_DOUBLE
-// } QueryResultValType;
-
 typedef struct {
     ColType type;
     void* data;
@@ -95,5 +89,6 @@ void* serialize_table(Table* t, int* len);
 void destory_query_result_list(QueryResultList* qrl, int qrl_len, int qr_len);
 QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_count);
 void println_rows(QueryResultList* qrl, int qrl_len, int qr_len);
+static int get_where_expr_res(Table* t, void* row, Ast* where_expr);
 
 #endif
