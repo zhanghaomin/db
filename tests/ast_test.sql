@@ -1,1 +1,1 @@
-select a from b where (a + 3) * b / 100 > d or (~e & 1) and f = g % 1 or !(h);          
+select * from txzj_miniapp_white_list where !(id);     

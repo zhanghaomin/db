@@ -78,7 +78,6 @@ Table* open_table(DB* d, char* name);
 int create_table(DB* d, Ast* a);
 int insert_row(DB* d, Ast* a);
 void unserialize_row(void* row, RowFmt* rf, QueryResult* qr);
-void destory_query_result(QueryResultVal* qrv);
 void cursor_rewind(Cursor* c);
 Cursor* cursor_init(Table* t);
 void cursor_destory(Cursor* c);

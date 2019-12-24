@@ -64,20 +64,23 @@ typedef enum {
     E_OR,
     E_AND,
     E_NOT,
+
     E_EQ,
     E_GT,
     E_LT,
     E_LTE,
     E_GTE,
     E_NEQ,
+
     E_ADD,
     E_SUB,
-    E_B_AND,
-    E_B_XOR,
-    E_B_OR,
     E_MUL,
     E_DIV,
     E_MOD,
+
+    E_B_AND,
+    E_B_XOR,
+    E_B_OR,
     E_B_NOT
 } ExprOp;
 
@@ -128,7 +131,7 @@ typedef struct {
 
 #define AVT_DOUBLE_CTOR(_v, _i) ({ \
     _v->type = AVT_DOUBLE;         \
-    _v->val.num = _i;              \
+    _v->val.d = _i;                \
     _v;                            \
 })
 

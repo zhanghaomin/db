@@ -674,9 +674,10 @@ void unserialize_row(void* row, RowFmt* rf, QueryResult* qr)
     }
 }
 
-void destory_query_result(QueryResultVal* qrv)
+void destory_query_result_val(QueryResultVal* qrv)
 {
     free(qrv->data);
+    free(qrv);
 }
 
 /**
@@ -719,65 +720,232 @@ int insert_row(DB* d, Ast* a)
     return 1;
 }
 
-int cmd_compare_eq(Table* t, void* row, Ast* op1, Ast* op2)
+static int qrv_to_bool(QueryResultVal* qrv)
 {
-    return 1;
-    int tmp;
-    ColType op1_type, op2_type;
-    QueryResultVal *op1_qrv, *op2_qrv;
+    int i;
+    double d;
 
-    if (op1->kind == AST_VAL) {
-        if (GET_AV_TYPE(op1) == AVT_ID) {
-            op1_qrv = get_col_val(row, t->row_fmt, GET_AV_STR(op1));
-        } else if (GET_AV_TYPE(op1) == AVT_DOUBLE) {
-            op1_qrv = smalloc(sizeof(QueryResultVal));
-            op1_qrv->type = C_DOUBLE;
-            op1_qrv->data = smalloc(sizeof(double));
-            copy_ast_val(op1_qrv->data, (AstVal*)op1);
-        } else if (GET_AV_TYPE(op1) == AVT_INT) {
-            op1_qrv = smalloc(sizeof(QueryResultVal));
-            op1_qrv->type = C_INT;
-            op1_qrv->data = smalloc(sizeof(int));
-            copy_ast_val(op1_qrv->data, (AstVal*)op1);
+    if (qrv->type == C_INT) {
+        memcpy(&i, qrv->data, sizeof(int));
+        return i != 0;
+    } else if (qrv->type == C_DOUBLE) {
+        memcpy(&d, qrv->data, sizeof(double));
+        return d != (double)0;
+    }
+
+    // char varchar
+    i = atoi(qrv->data);
+    return i != 0;
+}
+
+QueryResultVal* get_real_val_by_op(Table* t, void* row, Ast* op)
+{
+    QueryResultVal* qrv;
+    int where_res = 0;
+
+    assert(op->kind == AST_VAL || op->kind == AST_WHERE_EXP);
+
+    if (op->kind == AST_VAL) {
+        if (GET_AV_TYPE(op) == AVT_ID) {
+            qrv = get_col_val(row, t->row_fmt, GET_AV_STR(op));
+        } else if (GET_AV_TYPE(op) == AVT_DOUBLE) {
+            qrv = smalloc(sizeof(QueryResultVal));
+            qrv->type = C_DOUBLE;
+            qrv->data = smalloc(sizeof(double));
+            copy_ast_val(qrv->data, (AstVal*)op);
+        } else if (GET_AV_TYPE(op) == AVT_INT) {
+            qrv = smalloc(sizeof(QueryResultVal));
+            qrv->type = C_INT;
+            qrv->data = smalloc(sizeof(int));
+            copy_ast_val(qrv->data, (AstVal*)op);
         } else {
             // AVT_STR
-            op1_qrv = smalloc(sizeof(QueryResultVal));
-            op1_qrv->type = C_INT;
-            op1_qrv->data = smalloc(GET_AV_LEN(op1));
-            copy_ast_val(op1_qrv->data, (AstVal*)op1);
+            qrv = smalloc(sizeof(QueryResultVal));
+            qrv->type = C_CHAR;
+            qrv->data = smalloc(GET_AV_LEN(op));
+            copy_ast_val(qrv->data, (AstVal*)op);
         }
-    } else if (op1->kind == AST_WHERE_EXP) {
-        op1_qrv = smalloc(sizeof(QueryResultVal));
-        op1_qrv->data = smalloc(sizeof(int));
-        tmp = get_where_expr_res(t, row, op1);
-        memcpy(op1_qrv->data, &tmp, sizeof(int));
-        op1_qrv->type = C_INT;
+    } else if (op->kind == AST_WHERE_EXP) {
+        qrv = smalloc(sizeof(QueryResultVal));
+        qrv->type = C_INT;
+        qrv->data = smalloc(sizeof(int));
+        where_res = get_where_expr_res(t, row, op);
+        memcpy(qrv->data, &where_res, sizeof(int));
     }
 
-    if (op2->kind == AST_VAL) {
-        /* code */
-    } else if (op2->kind == AST_WHERE_EXP) {
-        op2_qrv = smalloc(sizeof(QueryResultVal));
-        op2_qrv->data = smalloc(sizeof(int));
-        tmp = get_where_expr_res(t, row, op2);
-        memcpy(op2_qrv->data, &tmp, sizeof(int));
-        op2_qrv->type = C_INT;
+    return qrv;
+}
+
+static int do_compare_int(int op1, int op2, ExprOp op)
+{
+    if (op == E_EQ) {
+        return op1 == op2;
+    } else if (op == E_GT) {
+        return op1 > op2;
+    } else if (op == E_GTE) {
+        return op1 >= op2;
+    } else if (op == E_LT) {
+        return op1 < op2;
+    } else if (op == E_LTE) {
+        return op1 <= op2;
+    } else if (op == E_NEQ) {
+        return op1 != op2;
     }
+
+    return 0;
+}
+
+static int do_compare_double(double op1, double op2, ExprOp op)
+{
+    if (op == E_EQ) {
+        return op1 == op2;
+    } else if (op == E_GT) {
+        return op1 > op2;
+    } else if (op == E_GTE) {
+        return op1 >= op2;
+    } else if (op == E_LT) {
+        return op1 < op2;
+    } else if (op == E_LTE) {
+        return op1 <= op2;
+    } else if (op == E_NEQ) {
+        return op1 != op2;
+    }
+
+    return 0;
+}
+
+static int do_compare_str(char* op1, char* op2, ExprOp op)
+{
+    int res;
+    res = strcmp(op1, op2);
+    if (op == E_EQ) {
+        return res == 0;
+    } else if (op == E_GT) {
+        return res > 0;
+    } else if (op == E_GTE) {
+        return res >= 0;
+    } else if (op == E_LT) {
+        return res < 0;
+    } else if (op == E_LTE) {
+        return res <= 0;
+    } else if (op == E_NEQ) {
+        return res != 0;
+    }
+
+    return 0;
+}
+
+int do_bool_op(int op1, int op2, ExprOp op)
+{
+    if (op == E_AND) {
+        return op1 && op2;
+    } else if (op == E_OR) {
+        return op1 || op2;
+    } else if (op == E_NOT) {
+        return !op1;
+    }
+
+    return 0;
+}
+
+int cmd_bool(Table* t, void* row, Ast* op1, Ast* op2, ExprOp op)
+{
+    QueryResultVal *op1_qrv, *op2_qrv;
+    int res;
+
+    op1_qrv = get_real_val_by_op(t, row, op1);
+
+    if (op != E_NOT) {
+        op2_qrv = get_real_val_by_op(t, row, op2);
+        res = do_bool_op(qrv_to_bool(op1_qrv), qrv_to_bool(op2_qrv), op);
+        destory_query_result_val(op1_qrv);
+        destory_query_result_val(op2_qrv);
+    } else {
+        res = do_bool_op(qrv_to_bool(op1_qrv), 0, op);
+        destory_query_result_val(op1_qrv);
+    }
+
+    return res;
+}
+
+// 如果一个是字符串，一个是数字，那么都转成数字比较
+int cmd_compare(Table* t, void* row, Ast* op1, Ast* op2, ExprOp op)
+{
+    int res, i1, i2;
+    double d1, d2;
+    QueryResultVal *op1_qrv, *op2_qrv;
+
+    op1_qrv = get_real_val_by_op(t, row, op1);
+    op2_qrv = get_real_val_by_op(t, row, op2);
+
+    if (op1_qrv->type == C_INT) {
+        memcpy(&i1, op1_qrv->data, sizeof(int));
+        if (op2_qrv->type == C_INT) {
+            memcpy(&i2, op2_qrv->data, sizeof(int));
+            res = do_compare_int(i1, i2, op);
+        } else if (op2_qrv->type == C_DOUBLE) {
+            memcpy(&d2, op2_qrv->data, sizeof(double));
+            res = do_compare_double((double)i1, d2, op);
+        } else {
+            i2 = atoi(op2_qrv->data);
+            res = do_compare_int(i1, i2, op);
+        }
+    } else if (op1_qrv->type == C_DOUBLE) {
+        memcpy(&d1, op1_qrv->data, sizeof(double));
+        if (op2_qrv->type == C_INT) {
+            memcpy(&i2, op2_qrv->data, sizeof(int));
+            res = do_compare_double(d1, (double)i2, op);
+        } else if (op2_qrv->type == C_DOUBLE) {
+            memcpy(&d2, op2_qrv->data, sizeof(double));
+            res = do_compare_double(d1, d2, op);
+        } else {
+            d2 = atof(op2_qrv->data);
+            res = do_compare_double(d1, d2, op);
+        }
+    } else {
+        // char varchar
+        if (op2_qrv->type == C_INT) {
+            memcpy(&i2, op2_qrv->data, sizeof(int));
+            res = do_compare_int(atoi(op1_qrv->data), i2, op);
+        } else if (op2_qrv->type == C_DOUBLE) {
+            memcpy(&d2, op2_qrv->data, sizeof(double));
+            res = do_compare_double(atof(op1_qrv->data), d2, op);
+        } else {
+            res = do_compare_str(op1_qrv->data, op2_qrv->data, op);
+        }
+    }
+
+    destory_query_result_val(op1_qrv);
+    destory_query_result_val(op2_qrv);
+    return res;
 }
 
 static int get_where_expr_res(Table* t, void* row, Ast* where_expr)
 {
-    assert(where_expr->kind == AST_WHERE_EXP);
+    assert(where_expr->kind == AST_WHERE_EXP || where_expr->kind == AST_VAL);
 
     Ast *op1, *op2;
     ExprOp op;
+    QueryResultVal* qrv;
+    int res = 0;
+
+    if (where_expr->kind == AST_VAL) {
+        qrv = get_real_val_by_op(t, row, where_expr);
+        res = qrv_to_bool(qrv);
+        destory_query_result_val(qrv);
+        return res;
+    }
 
     op1 = where_expr->child[0];
     op2 = where_expr->child[1];
     op = where_expr->attr;
 
-    if (op == E_EQ) {
-        return cmd_compare_eq(t, row, op1, op2);
+    if (op == E_EQ || op == E_NEQ || op == E_GT || op == E_GTE || op == E_LT || op == E_LTE) {
+        return cmd_compare(t, row, op1, op2, op);
+    }
+
+    if (op == E_NOT || op == E_OR || op == E_AND) {
+        return cmd_bool(t, row, op1, op2, op);
     }
 
     return 0;
