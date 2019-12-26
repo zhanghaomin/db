@@ -16,7 +16,10 @@ TOBJ = $(patsubst %, $(ODIR)/%, $(_TOBJ))
 _OBJ = ast.o ht.o parser.o scanner.o table.o util.o
 OBJ = $(patsubst %, $(ODIR)/%, $(_OBJ))
 
-_DEP = ast.h ht.h table.h util.h
+_DOBJ = ast.o ht.o parser.o scanner.o table.o util.o cli.o linenoise.o
+DOBJ = $(patsubst %, $(ODIR)/%, $(_DOBJ))
+
+_DEP = ast.h ht.h table.h util.h linenoise.h
 DEP = $(patsubst %, $(IDIR)/%, $(_DEP))
 
 $(ODIR)/%.o: $(SDIR)/%.c $(DEP)
@@ -24,6 +27,9 @@ $(ODIR)/%.o: $(SDIR)/%.c $(DEP)
 
 $(ODIR)/%_test.o: $(TDIR)/%_test.c
 	$(CC) $(CFLAGS) -c -o $@ $<
+
+db: $(DOBJ)
+	$(CC) $(CFLAGS) -o $@ $(DOBJ)
 
 test: $(OBJ) $(TOBJ)
 	for i in $(TOBJ); do \

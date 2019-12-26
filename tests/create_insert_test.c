@@ -83,7 +83,7 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
 
     while (!feof(f)) {
         lex_read_line(f, s, 4096);
-        assert(insert_row(d, G_AST) == 1);
+        assert(insert_row(d, G_AST) == 0);
         ast_destory(G_AST);
     }
 

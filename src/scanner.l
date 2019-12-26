@@ -97,3 +97,14 @@ int lex_read_line(FILE* fp, char *s, int len)
     yy_delete_buffer(bp);
     return res;
 }
+
+int lex_read(char *s, int len)
+{
+    YY_BUFFER_STATE bp;
+    int res;
+    bp = yy_scan_bytes(s, len);
+    yy_switch_to_buffer(bp);
+    res = yyparse();
+    yy_delete_buffer(bp);
+    return res;
+}

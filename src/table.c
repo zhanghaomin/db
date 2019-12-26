@@ -717,7 +717,7 @@ int insert_row(DB* d, Ast* a)
         t->free_map[page->header.page_num] -= size;
     }
 
-    return 1;
+    return 0;
 }
 
 static int qrv_to_bool(QueryResultVal* qrv)
@@ -951,14 +951,14 @@ static int get_where_expr_res(Table* t, void* row, Ast* where_expr)
     return 0;
 }
 
-QueryResult* filter_row(Table* t, Cursor* c, Ast* expect_cols, Ast* where_expr)
+QueryResult* filter_row(Table* t, Cursor* c, Ast* expect_cols, Ast* where_top_expr)
 {
     QueryResult* qr;
     QueryResultVal* qrv;
     int col_cnt = 0;
 
     while (!cursor_is_end(c)) {
-        if (get_where_expr_res(t, cursor_value(c), where_expr) == 1) {
+        if (where_top_expr == NULL || get_where_expr_res(t, cursor_value(c), where_top_expr->child[0]) == 1) {
             qr = smalloc(expect_cols->children * sizeof(QueryResultVal*));
             // 符合条件,返回这条数据
             for (int i = 0; i < expect_cols->children; i++) {
@@ -1070,6 +1070,12 @@ QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_cou
     table_name = select_ast->child[1];
     where_top_list = select_ast->child[2];
     t = open_table(d, GET_AV_STR(table_name->child[0]));
+
+    if (t == NULL) {
+        printf("table `%s` not exits\n", GET_AV_STR(table_name->child[0]));
+        return NULL;
+    }
+
     c = cursor_init(t);
     (*row_count) = 0;
     *col_count = check_and_get_select_col_count(t, expect_cols);
@@ -1083,7 +1089,7 @@ QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_cou
     qrl = realloc(qrl, ((*row_count)) * sizeof(QueryResult*));
     qrl[(*row_count) - 1] = get_select_header(t, expect_cols);
 
-    while ((qr = filter_row(t, c, expect_cols, where_top_list->child[0])) != NULL) {
+    while ((qr = filter_row(t, c, expect_cols, where_top_list)) != NULL) {
         (*row_count)++;
         qrl = realloc(qrl, (*row_count) * sizeof(QueryResult*));
         qrl[(*row_count) - 1] = qr;
