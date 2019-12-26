@@ -93,11 +93,7 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
 
     // printf("insert pass\n");
 
-    Cursor* c;
-    c = cursor_init(t);
-    traverse_table(c);
     printf("persist row pass\n");
-    cursor_destory(c);
     db_destory(d);
     // fclose(f);
     return 0;
