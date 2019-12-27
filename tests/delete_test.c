@@ -1,7 +1,6 @@
 #include "include/ast.h"
 #include "include/table.h"
 #include "include/util.h"
-#include <assert.h>
 #include <unistd.h>
 
 extern int yyparse();
