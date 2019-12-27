@@ -71,7 +71,7 @@ typedef struct {
     Pager* pager;
     Table* table;
     Page* page;
-    int row_num; // 当前指向第几行，不包括已删除的
+    // int row_num; // 当前指向第几行，不包括已删除的
     int page_dir_num; // 当前指向page中第几个目录项
 } Cursor;
 
@@ -81,13 +81,14 @@ Table* open_table(DB* d, char* name);
 int create_table(DB* d, Ast* a);
 int get_table_row_cnt(Table* t);
 int insert_row(DB* d, Ast* a);
+int delete_row(DB* d, Ast* a);
 QueryResult* get_table_header(Table* t);
 void destory_query_result_list(QueryResultList* qrl, int qrl_len, int qr_len);
 QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_count);
-static int get_where_expr_res(Table* t, void* row, Ast* where_expr);
 int get_query_result_val_len(QueryResultVal* qrv);
 int get_dynamic_col_num_by_col_name(RowFmt* rf, char* col_name);
 int get_col_num_by_col_name(RowFmt* rf, char* col_name);
+int get_table_max_page_num(Table* t);
 
 void println_rows(QueryResultList* qrl, int qrl_len, int qr_len);
 
@@ -95,8 +96,11 @@ Cursor* cursor_init(Table* t);
 void cursor_destory(Cursor* c);
 void* cursor_value(Cursor* c);
 int cursor_is_end(Cursor* c);
-void cursor_next(Cursor* c, int skip_delete);
+void cursor_next(Cursor* c);
 void cursor_rewind(Cursor* c);
+Page* cursor_page(Cursor* c);
+int cursor_dir_num(Cursor* c);
+int cursor_value_is_deleted(Cursor* c);
 
 Page* get_page(Table* t, int page_num);
 int get_page_dir_cnt(Page* p);
@@ -106,6 +110,7 @@ int flush_page(Table* t, int page_num);
 void set_dir_info(Page* p, int dir_num, int is_delete, int row_offset);
 void get_dir_info(Page* p, int dir_num, int* is_delete, int* row_offset);
 
+void set_row_deleted(Page* p, int dir_num);
 int row_is_delete(Page* p, int dir_num);
 void* row_real_pos(Page* p, int dir_num);
 int serialize_row(void* store, RowFmt* rf, QueryResult* qr);

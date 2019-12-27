@@ -40,6 +40,10 @@ void do_cmd(DB* d, Ast* a)
         } else {
             printf("insert ok.\n");
         }
+    } else if (a->kind == AST_DELETE) {
+        int res = 0;
+        res = delete_row(d, G_AST);
+        printf("%d effected rows.\n", res);
     }
 }
 

@@ -18,7 +18,7 @@ int yyerror(char *s);
 
 %type <num> col_type
 %type <ast> topstmt select_stmt where expr cols_stmt table_name create_table_stmt order_by order_by_col_list order_by_col limit limit_clause
-%type <ast> col_fmt_stmt col_fmt_list_stmt insert_row_list_stmt insert_value_list_stmt insert_stmt insert_value
+%type <ast> col_fmt_stmt col_fmt_list_stmt insert_row_list_stmt insert_value_list_stmt insert_stmt insert_value delete_stmt
 
 %left T_OR
 %left T_AND
@@ -41,10 +41,16 @@ topstmt:
       select_stmt ';' { $$ = $1; G_AST = $$; YYACCEPT;}
     | create_table_stmt ';' { $$ = $1; G_AST = $$; YYACCEPT; }
     | insert_stmt ';' { $$ = $1; G_AST = $$; YYACCEPT; }
+    | delete_stmt ';' { $$ = $1; G_AST = $$; YYACCEPT; }
+    ;
+
+delete_stmt:
+      T_DELETE T_FROM table_name where { $$ = create_ast(2, AST_DELETE, -1, $3, $4); }
+    | T_DELETE '*' T_FROM table_name { $$ = create_ast(2, AST_DELETE, -1, $4, NULL); }
     ;
 
 insert_stmt:
-      T_INSERT T_INTO table_name T_VALUES insert_row_list_stmt { $$ = create_ast(2, AST_INSERT, -1,  $3, $5); }
+      T_INSERT T_INTO table_name T_VALUES insert_row_list_stmt { $$ = create_ast(2, AST_INSERT, -1, $3, $5); }
     ;
 
 insert_row_list_stmt:

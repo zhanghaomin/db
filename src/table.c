@@ -7,6 +7,8 @@
 #include <string.h>
 #include <unistd.h>
 
+static int get_where_expr_res(Table* t, void* row, Ast* where_expr);
+
 void destory_query_result_list(QueryResultList* qrl, int qrl_len, int qr_len)
 {
     for (int i = 0; i < qrl_len; i++) {
@@ -43,6 +45,11 @@ QueryResult* get_table_header(Table* t)
     }
 
     return qr;
+}
+
+inline int get_table_max_page_num(Table* t)
+{
+    return t->max_page_num;
 }
 
 int get_dynamic_col_num_by_col_name(RowFmt* rf, char* col_name)
@@ -601,7 +608,7 @@ QueryResult* filter_row(Table* t, Cursor* c, Ast* expect_cols, Ast* where_top_ex
     int col_cnt = 0;
 
     while (!cursor_is_end(c)) {
-        if (where_top_expr == NULL || get_where_expr_res(t, cursor_value(c), where_top_expr->child[0]) == 1) {
+        if (!cursor_value_is_deleted(c) && (where_top_expr == NULL || get_where_expr_res(t, cursor_value(c), where_top_expr->child[0]) == 1)) {
             qr = smalloc(expect_cols->children * sizeof(QueryResultVal*));
             // 符合条件,返回这条数据
             for (int i = 0; i < expect_cols->children; i++) {
@@ -638,12 +645,12 @@ QueryResult* filter_row(Table* t, Cursor* c, Ast* expect_cols, Ast* where_top_ex
             }
 
             // 移动指针
-            cursor_next(c, 1);
+            cursor_next(c);
             return qr;
-        } else {
-            // 继续下一条
-            cursor_next(c, 1);
         }
+
+        // 继续下一条
+        cursor_next(c);
     }
 
     return NULL;
@@ -747,7 +754,7 @@ QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_cou
         return NULL;
     }
 
-    if (!check_where_ast_valid(t, where_top_list->child[0])) {
+    if (where_top_list != NULL && !check_where_ast_valid(t, where_top_list->child[0])) {
         return NULL;
     }
 
@@ -763,6 +770,47 @@ QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_cou
 
     cursor_destory(c);
     return qrl;
+}
+
+static inline void remove_row_from_table(Table* t, Page* p, int dir_num)
+{
+    set_row_deleted(p, dir_num);
+    t->row_count--;
+}
+
+int delete_row(DB* d, Ast* delete_ast)
+{
+    assert(delete_ast->kind == AST_DELETE);
+
+    Ast *table_name, *where_top_list;
+    Table* t;
+    Cursor* c;
+    int deleted_row_count = 0;
+
+    table_name = delete_ast->child[0];
+    where_top_list = delete_ast->child[1];
+    t = open_table(d, GET_AV_STR(table_name->child[0]));
+
+    if (t == NULL) {
+        printf("table `%s` not exits\n", GET_AV_STR(table_name->child[0]));
+        return 0;
+    }
+
+    if (where_top_list != NULL && !check_where_ast_valid(t, where_top_list->child[0])) {
+        return 0;
+    }
+
+    c = cursor_init(t);
+
+    while (!cursor_is_end(c)) {
+        if (!cursor_value_is_deleted(c) && (where_top_list == NULL || get_where_expr_res(t, cursor_value(c), where_top_list->child[0]) == 1)) {
+            remove_row_from_table(t, c->page, c->page_dir_num);
+            deleted_row_count++;
+        }
+        cursor_next(c);
+    }
+
+    return deleted_row_count;
 }
 
 // | len | table_count | table_fmt | ... |

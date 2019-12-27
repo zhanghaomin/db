@@ -17,6 +17,13 @@ inline int row_is_delete(Page* p, int dir_num)
     return is_delete;
 }
 
+inline void set_row_deleted(Page* p, int dir_num)
+{
+    int offset;
+    get_dir_info(p, dir_num, NULL, &offset);
+    set_dir_info(p, dir_num, 1, offset);
+}
+
 inline void* row_real_pos(Page* p, int dir_num)
 {
     int offset;

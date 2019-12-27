@@ -15,38 +15,49 @@ void cursor_destory(Cursor* c)
     free(c);
 }
 
+inline Page* cursor_page(Cursor* c)
+{
+    return c->page;
+}
+
+inline int cursor_dir_num(Cursor* c)
+{
+    return c->page_dir_num;
+}
+
 void* cursor_value(Cursor* c)
 {
-    return row_real_pos(c->page, c->page_dir_num);
+    return row_real_pos(cursor_page(c), cursor_dir_num(c));
 }
 
-int cursor_is_end(Cursor* c)
+static inline int cursor_reach_page_end(Cursor* c)
 {
-    return c->row_num == get_table_row_cnt(c->table);
+    return cursor_dir_num(c) == get_page_dir_cnt(c->page);
 }
 
-static int cursor_reach_page_end(Cursor* c)
+inline int cursor_is_end(Cursor* c)
 {
-    return c->page_dir_num == get_page_dir_cnt(c->page);
+    return cursor_reach_page_end(c) && get_page_num(cursor_page(c)) == get_table_max_page_num(c->table);
 }
 
-void cursor_next(Cursor* c, int skip_delete)
+inline int cursor_value_is_deleted(Cursor* c)
+{
+    return row_is_delete(cursor_page(c), cursor_dir_num(c));
+}
+
+void cursor_next(Cursor* c)
 {
     if (cursor_is_end(c)) {
         return;
     }
 
-retry:
     c->page_dir_num++;
 
     if (cursor_reach_page_end(c)) {
-        c->page = get_page(c->table, get_page_num(c->page) + 1);
+        c->page = get_page(c->table, get_page_num(cursor_page(c)) + 1);
         c->page_dir_num = 0;
-    } else if (skip_delete && row_is_delete(c->page, c->page_dir_num)) {
-        goto retry;
     }
 
-    c->row_num++;
     return;
 }
 
@@ -54,5 +65,4 @@ void cursor_rewind(Cursor* c)
 {
     c->page = get_page(c->table, 0);
     c->page_dir_num = 0;
-    c->row_num = 0;
 }

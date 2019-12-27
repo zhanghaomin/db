@@ -22,7 +22,7 @@
 static const char* LimitedKindNameMap[][1024] UNUSED = {
     { "AST_VAL" }, // 0 child
     { "AST_TABLE", "AST_ORDER_BY_COL", "AST_WHERE_TOP_EXP" }, // 1 child
-    { "AST_WHERE_EXP", "AST_COL_FMT", "AST_CREATE", "AST_INSERT", "AST_LIMIT" }, // 2 child
+    { "AST_WHERE_EXP", "AST_COL_FMT", "AST_CREATE", "AST_INSERT", "AST_LIMIT", "AST_DELETE" }, // 2 child
     {}, // 3 child
     {}, // 4 child
     { "AST_SELECT" }, // 5 child
@@ -43,6 +43,7 @@ typedef enum {
     AST_CREATE,
     AST_INSERT,
     AST_LIMIT,
+    AST_DELETE,
     // 5 child
     AST_SELECT = 5 << CHILD_CNT_OFFSET,
     // unlimited

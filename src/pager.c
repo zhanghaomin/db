@@ -84,7 +84,7 @@ void* reserve_row_space(Table* t, int size)
             if (find_page->header.dir_cnt == 0) {
                 free_space = (void*)find_page + PAGE_SIZE - size;
             } else {
-                free_space = row_real_pos(find_page, find_page->header.dir_cnt - 1) - size;
+                free_space = row_real_pos(find_page, get_page_dir_cnt(find_page) - 1) - size;
             }
             offset = free_space - (void*)find_page->data;
             set_dir_info(find_page, find_page->header.dir_cnt++, 0, offset);
