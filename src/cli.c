@@ -50,7 +50,7 @@ int main(int argc, char const* argv[])
     d = db_init();
 
     linenoiseHistoryLoad("history.txt");
-
+    printf("hello\n");
     while ((line = linenoise("db> ")) != NULL) {
         /* Do something with the string. */
         if (line[0] != '\0' && line[0] != '/') {
@@ -65,5 +65,6 @@ int main(int argc, char const* argv[])
     }
 
     db_destory(d);
+    printf("bye\n");
     return 0;
 }

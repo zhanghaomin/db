@@ -29,14 +29,14 @@ int cacl_serialized_row_len(RowFmt* rf, QueryResult* qr)
     int result = 0;
     ColFmt* cf;
 
-    result += sizeof(RowHeader);
+    result += get_row_header_len();
 
     for (int i = 0; i < rf->origin_cols_count; i++) {
         cf = &rf->cols_fmt[i];
 
         if (cf->is_dynamic) { // 动态属性需要额外空间储存偏移量, 动态属性都是字符串
             result += sizeof(int);
-            result += strlen(qr[i]->data);
+            result += strlen(qr[i]->data) + 1;
         } else { // 静态属性定长
             result += cf->len;
         }
@@ -54,6 +54,7 @@ int cacl_serialized_row_len(RowFmt* rf, QueryResult* qr)
      偏移量都是相对header的
 */
 // 4 + 4 + 4 + 4 + 8 + 4 + 255 + 4 + 52
+// 4 + 4 + (4+4) + (4+4) + (4+255) + (4+4) + (4+4) + (4 + 52)
 int serialize_row(void* store, RowFmt* rf, QueryResult* qr)
 {
     ColFmt* cf;
@@ -116,7 +117,7 @@ QueryResultVal* get_col_val(void* row, RowFmt* rf, char* col_name)
     QueryResultVal* qrv;
     qrv = smalloc(sizeof(QueryResultVal));
     col_num = get_col_num_by_col_name(rf, col_name);
-    row += sizeof(RowHeader);
+    row += get_row_header_len();
 
     if (col_num == -1) {
         return NULL;

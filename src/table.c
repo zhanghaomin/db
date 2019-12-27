@@ -90,7 +90,7 @@ inline int get_query_result_val_len(QueryResultVal* qrv)
     } else if (qrv->type == C_DOUBLE) {
         return sizeof(double);
     } else if (qrv->type == C_CHAR || qrv->type == C_VARCHAR) {
-        return strlen(qrv->data);
+        return strlen(qrv->data) + 1;
     }
 
     return 0;
@@ -699,6 +699,25 @@ QueryResult* get_select_header(Table* t, Ast* expect_cols)
     return qr;
 }
 
+int check_where_ast_valid(Table* t, Ast* where_expr)
+{
+    if (where_expr == NULL) {
+        return 1;
+    }
+
+    assert(where_expr->kind == AST_WHERE_EXP || where_expr->kind == AST_VAL);
+
+    if (where_expr->kind == AST_VAL) {
+        if (GET_AV_TYPE(where_expr) == AVT_ID && get_col_num_by_col_name(t->row_fmt, GET_AV_STR(where_expr)) == -1) {
+            printf("col `%s` not exist\n", GET_AV_STR(where_expr));
+            return 0;
+        }
+        return 1;
+    }
+
+    return check_where_ast_valid(t, where_expr->child[0]) && check_where_ast_valid(t, where_expr->child[1]);
+}
+
 QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_count)
 {
     assert(select_ast->kind == AST_SELECT);
@@ -725,6 +744,10 @@ QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_cou
 
     if (*col_count == -1) {
         *row_count = 0;
+        return NULL;
+    }
+
+    if (!check_where_ast_valid(t, where_top_list->child[0])) {
         return NULL;
     }
 

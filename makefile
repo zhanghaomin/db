@@ -10,7 +10,7 @@ TDIR = tests
 SDIR = src
 ODIR = src/obj
 
-_TOBJ =  create_insert_test.o
+_TOBJ = ast_test.o create_insert_test.o persist_test.o select_test.o
 TOBJ = $(patsubst %, $(ODIR)/%, $(_TOBJ))
 
 _OBJ = ast.o ht.o parser.o scanner.o table.o util.o cursor.o pager.o fmt.o row.o
@@ -44,3 +44,6 @@ parser.o: parser.y
 
 clean:
 	rm -rf test *.dat $(ODIR)/*.o $(IDIR)/$(DFT_PARSER_H)
+
+cleandat:
+	rm -rf *.dat

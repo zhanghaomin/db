@@ -62,10 +62,10 @@ inline void set_dir_info(Page* p, int dir_num, int is_delete, int row_offset)
 inline void get_dir_info(Page* p, int dir_num, int* is_delete, int* row_offset)
 {
     if (is_delete != NULL) {
-        memcpy(&is_delete, p->data + get_sizeof_dir() * (dir_num), sizeof(int));
+        memcpy(is_delete, p->data + get_sizeof_dir() * (dir_num), sizeof(int));
     }
     if (row_offset != NULL) {
-        memcpy(&row_offset, p->data + get_sizeof_dir() * (dir_num) + sizeof(int), sizeof(int));
+        memcpy(row_offset, p->data + get_sizeof_dir() * (dir_num) + sizeof(int), sizeof(int));
     }
 }
 
@@ -88,7 +88,7 @@ void* reserve_row_space(Table* t, int size)
             }
             offset = free_space - (void*)find_page->data;
             set_dir_info(find_page, find_page->header.dir_cnt++, 0, offset);
-            t->free_map[i] -= size;
+            t->free_map[i] -= (size + get_sizeof_dir());
             return free_space;
         }
     }
