@@ -11,8 +11,7 @@ Page* get_page(Table* t, int page_num)
 
         if (page_num > t->max_page_num) { // 新空间,不需要读磁盘
             new_page->header.page_num = page_num;
-            new_page->header.row_count = 0;
-            new_page->header.tail = 0;
+            new_page->header.dir_cnt = 0;
             t->max_page_num = page_num;
         } else { // 旧数据
             read(t->data_fd, new_page, PAGE_SIZE);
@@ -39,24 +38,62 @@ int flush_page(Table* t, int page_num)
     return 0;
 }
 
-Page* find_free_page(Table* t, int size)
+inline int get_page_dir_cnt(Page* p)
+{
+    return p->header.dir_cnt;
+}
+
+inline int get_page_num(Page* p)
+{
+    return p->header.page_num;
+}
+
+static inline int get_sizeof_dir()
+{
+    return sizeof(int) * 2;
+}
+
+inline void set_dir_info(Page* p, int dir_num, int is_delete, int row_offset)
+{
+    memcpy(p->data + get_sizeof_dir() * (dir_num), &is_delete, sizeof(int));
+    memcpy(p->data + get_sizeof_dir() * (dir_num) + sizeof(int), &row_offset, sizeof(int));
+}
+
+inline void get_dir_info(Page* p, int dir_num, int* is_delete, int* row_offset)
+{
+    if (is_delete != NULL) {
+        memcpy(&is_delete, p->data + get_sizeof_dir() * (dir_num), sizeof(int));
+    }
+    if (row_offset != NULL) {
+        memcpy(&row_offset, p->data + get_sizeof_dir() * (dir_num) + sizeof(int), sizeof(int));
+    }
+}
+
+// | header | page_directory | ... | recs |
+// page_directory => | is_delete | offset | ...
+void* reserve_row_space(Table* t, int size)
 {
     Page* find_page;
-    int i = 0;
+    void* free_space;
+    int offset;
 
-    for (; i <= MAX_PAGE_CNT_P_TABLE; i++) {
-        if (size <= t->free_map[i]) {
+    for (int i = 0; i <= MAX_PAGE_CNT_P_TABLE; i++) {
+        // 预留空间给page_directory
+        if (size + get_sizeof_dir() <= t->free_map[i]) {
             find_page = get_page(t, i);
-            return find_page;
+            if (find_page->header.dir_cnt == 0) {
+                free_space = (void*)find_page + PAGE_SIZE - size;
+            } else {
+                free_space = row_real_pos(find_page, find_page->header.dir_cnt - 1) - size;
+            }
+            offset = free_space - (void*)find_page->data;
+            set_dir_info(find_page, find_page->header.dir_cnt++, 0, offset);
+            t->free_map[i] -= size;
+            return free_space;
         }
     }
 
     // never happen
     printf("page no space\n");
     exit(-1);
-}
-
-void* get_page_tail(Page* p)
-{
-    return (void*)(p->data + p->header.tail);
 }

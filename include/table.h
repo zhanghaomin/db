@@ -36,14 +36,14 @@ typedef struct {
 } RowFmt;
 
 // | header | page_directory | ... | recs |
+// page_directory => | is_delete | offset | ...
 // 不用page_directory时，一个记录的增大会导致所有记录后移，直接依赖他们偏移量的地方都需要更改（更新索引会很麻烦）
-// 使用page_directory在更新时，如果空间足够，那么移动他后面的元素，外面的引用不需要修改，如果空间不够，使用溢出块，外面的引用也不需要更改
+// 使用page_directory在更新时，如果空间足够，那么移动他后面的元素，外面的引用不需要修改，如果空间不够，删除原来的记录，寻找新的空间插入，外面的引用只需要更改当前记录
 // 删除只标记，不删除，等剩余空间太大时再删除
 typedef struct {
     struct {
         int page_num; // 页号
-        int row_count; // 页里有多少行
-        int tail; // 相对于page.data
+        int dir_cnt; // 页目录项数
     } header;
     char data[];
 } Page;
@@ -63,7 +63,7 @@ typedef struct {
     RowFmt* row_fmt;
     Pager* pager;
     int max_page_num; // 最大叶号
-    int row_count; // 表里数据总行数
+    int row_count; // 表里数据总行数，不包括已删除的
     int free_map[MAX_PAGE_CNT_P_TABLE]; // 每页的空闲空间
 } Table;
 
@@ -71,22 +71,23 @@ typedef struct {
     Pager* pager;
     Table* table;
     Page* page;
-    int offset; // 相对于page.data
-    int row_num; // 当前指向第几行
-    int page_row_num; // 当前指向page中第几行
+    int row_num; // 当前指向第几行，不包括已删除的
+    int page_dir_num; // 当前指向page中第几个目录项
 } Cursor;
 
 DB* db_init();
 void db_destory(DB* d);
 Table* open_table(DB* d, char* name);
 int create_table(DB* d, Ast* a);
+int get_table_row_cnt(Table* t);
 int insert_row(DB* d, Ast* a);
-void unserialize_row(void* row, RowFmt* rf, QueryResult* qr);
-void* serialize_table(Table* t, int* len);
 QueryResult* get_table_header(Table* t);
 void destory_query_result_list(QueryResultList* qrl, int qrl_len, int qr_len);
 QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_count);
 static int get_where_expr_res(Table* t, void* row, Ast* where_expr);
+int get_query_result_val_len(QueryResultVal* qrv);
+int get_dynamic_col_num_by_col_name(RowFmt* rf, char* col_name);
+int get_col_num_by_col_name(RowFmt* rf, char* col_name);
 
 void println_rows(QueryResultList* qrl, int qrl_len, int qr_len);
 
@@ -94,12 +95,21 @@ Cursor* cursor_init(Table* t);
 void cursor_destory(Cursor* c);
 void* cursor_value(Cursor* c);
 int cursor_is_end(Cursor* c);
-void cursor_next(Cursor* c);
+void cursor_next(Cursor* c, int skip_delete);
 void cursor_rewind(Cursor* c);
 
-Page* find_free_page(Table* t, int size);
 Page* get_page(Table* t, int page_num);
-void* get_page_tail(Page* p);
+int get_page_dir_cnt(Page* p);
+int get_page_num(Page* p);
+void* reserve_row_space(Table* t, int size);
 int flush_page(Table* t, int page_num);
+void set_dir_info(Page* p, int dir_num, int is_delete, int row_offset);
+void get_dir_info(Page* p, int dir_num, int* is_delete, int* row_offset);
+
+int row_is_delete(Page* p, int dir_num);
+void* row_real_pos(Page* p, int dir_num);
+int serialize_row(void* store, RowFmt* rf, QueryResult* qr);
+QueryResultVal* get_col_val(void* row, RowFmt* rf, char* col_name);
+int cacl_serialized_row_len(RowFmt* rf, QueryResult* qr);
 
 #endif

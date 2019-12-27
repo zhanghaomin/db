@@ -21,6 +21,16 @@ void destory_query_result_list(QueryResultList* qrl, int qrl_len, int qr_len)
     free(qrl);
 }
 
+void destory_query_result(QueryResult* qr, int qr_len)
+{
+    for (int i = 0; i < qr_len; i++) {
+        free(qr[i]->data);
+        free(qr[i]);
+    }
+
+    free(qr);
+}
+
 QueryResult* get_table_header(Table* t)
 {
     QueryResult* qr = NULL;
@@ -33,34 +43,6 @@ QueryResult* get_table_header(Table* t)
     }
 
     return qr;
-}
-
-ColFmt* get_col_fmt_by_col_name(RowFmt* rf, char* col_name)
-{
-    for (int i = 0; i < rf->static_cols_count; i++) {
-        if (strcmp(rf->static_cols_name[i], col_name) == 0) {
-            return &rf->cols_fmt[i];
-        }
-    }
-
-    for (int i = 0; i < rf->dynamic_cols_count; i++) {
-        if (strcmp(rf->dynamic_cols_name[i], col_name) == 0) {
-            return &rf->cols_fmt[rf->static_cols_count + i];
-        }
-    }
-
-    return NULL;
-}
-
-int get_static_col_num_by_col_name(RowFmt* rf, char* col_name)
-{
-    for (int i = 0; i < rf->static_cols_count; i++) {
-        if (strcmp(rf->static_cols_name[i], col_name) == 0) {
-            return i;
-        }
-    }
-
-    return -1;
 }
 
 int get_dynamic_col_num_by_col_name(RowFmt* rf, char* col_name)
@@ -85,31 +67,6 @@ int get_col_num_by_col_name(RowFmt* rf, char* col_name)
     return -1;
 }
 
-int cacl_serialized_row_len(RowFmt* rf, Ast* val_list)
-{
-    assert(val_list->kind == AST_INSERT_VAL_LIST);
-
-    int result = 0;
-    ColFmt* cf;
-
-    result += sizeof(RowHeader);
-
-    for (int i = 0; i < val_list->children; i++) {
-        cf = &rf->cols_fmt[i];
-
-        if (cf->is_dynamic) { // 动态属性需要额外空间储存偏移量
-            result += sizeof(int);
-            result += GET_AV_LEN(val_list->child[i]);
-        } else { // 静态属性定长
-            result += cf->len;
-        }
-
-        result += sizeof(int);
-    }
-
-    return result;
-}
-
 static inline void copy_ast_val(void* dest, AstVal* a)
 {
     int i;
@@ -124,6 +81,19 @@ static inline void copy_ast_val(void* dest, AstVal* a)
     } else {
         memcpy(dest, GET_AV_STR(a), GET_AV_LEN(a));
     }
+}
+
+inline int get_query_result_val_len(QueryResultVal* qrv)
+{
+    if (qrv->type == C_INT) {
+        return sizeof(int);
+    } else if (qrv->type == C_DOUBLE) {
+        return sizeof(double);
+    } else if (qrv->type == C_CHAR || qrv->type == C_VARCHAR) {
+        return strlen(qrv->data);
+    }
+
+    return 0;
 }
 
 static void get_table_file_name(char* name, char* file_name)
@@ -265,114 +235,90 @@ void* serialize_table(Table* t, int* len)
     return origin;
 }
 
-/*
-    || RowHeader || 1st dynamic offset || 2nd dynamic offset || ... || 1st reclen | 1st static rec || 2nd reclen | 2nd static rec || ... || 1st dynamic reclen | 1st dynamic rec || 2nd dynamic reclen | 2nd dynamic rec || ...
-                            |______________________________________________________________________________________________________________|
-                                                  |________________________________________________________________________________________________________________________________|
-     偏移量都是相对header的
-*/
-// 4 + 4 + 4 + 4 + 8 + 4 + 255 + 4 + 52
-int serialize_row(void* store, RowFmt* rf, Ast* val_list)
-{
-    assert(val_list->kind == AST_INSERT_VAL_LIST);
-
-    ColFmt* cf;
-    RowHeader rh;
-    AstVal* val;
-    rh.row_len = 0;
-    void *dynamic_offset_store, *data_start;
-    int offset = 0;
-    int val_len = 0;
-
-    data_start = store + sizeof(int);
-    dynamic_offset_store = data_start;
-    store += sizeof(int) + sizeof(int) * rf->dynamic_cols_count;
-
-    // 写入静态字段
-    for (int i = 0; i < val_list->children; i++) {
-        cf = &rf->cols_fmt[i];
-
-        if (!cf->is_dynamic) {
-            val = (AstVal*)(val_list->child[i]);
-            val_len = GET_AV_LEN(val);
-            memcpy(store, &val_len, sizeof(int));
-            store += sizeof(int);
-            copy_ast_val(store, val);
-            // important: 静态字段固定长度
-            store += cf->len;
-            rh.row_len += sizeof(int);
-            rh.row_len += cf->len;
-        }
-    }
-
-    // 写入动态字段, 修改偏移量
-    for (int i = 0; i < val_list->children; i++) {
-        cf = &rf->cols_fmt[i];
-
-        if (cf->is_dynamic) {
-            val = (AstVal*)(val_list->child[i]);
-            val_len = GET_AV_LEN(val);
-            offset = store - data_start;
-            memcpy(dynamic_offset_store, &offset, sizeof(int));
-            dynamic_offset_store += sizeof(int);
-            memcpy(store, &val_len, sizeof(int));
-            store += sizeof(int);
-            copy_ast_val(store, val);
-            store += val_len;
-            rh.row_len += 2 * sizeof(int);
-            rh.row_len += val_len;
-        }
-    }
-
-    // 长度加上自己
-    rh.row_len += sizeof(RowHeader);
-    // 写入header
-    memcpy(data_start - sizeof(RowHeader), &rh, sizeof(RowHeader));
-    return 0;
-}
-
-QueryResultVal* get_col_val(void* row, RowFmt* rf, char* col_name)
-{
-    int col_num, dynamic_col_num, len, offset;
-    void* col;
-    ColFmt cf;
-    QueryResultVal* qrv;
-    qrv = smalloc(sizeof(QueryResultVal));
-    col_num = get_col_num_by_col_name(rf, col_name);
-    row += sizeof(RowHeader);
-
-    if (col_num == -1) {
-        return NULL;
-    }
-
-    cf = rf->cols_fmt[col_num];
-    qrv->type = cf.type;
-
-    if (cf.is_dynamic) {
-        dynamic_col_num = get_dynamic_col_num_by_col_name(rf, col_name);
-        memcpy(&offset, row + sizeof(int) * dynamic_col_num, sizeof(int));
-        col = row + offset;
-    } else {
-        col = row + sizeof(int) * rf->dynamic_cols_count;
-        // 跳过前面的静态字段
-        for (int i = 0; i < col_num; i++) {
-            if (!rf->cols_fmt[i].is_dynamic) {
-                col += sizeof(int) + rf->cols_fmt[i].len;
-            }
-        }
-    }
-
-    memcpy(&len, col, sizeof(int)); // len
-    col += sizeof(int);
-    qrv->data = smalloc(len);
-    memcpy(qrv->data, col, len);
-    return qrv;
-}
-
 void destory_query_result_val(QueryResultVal* qrv)
 {
     free(qrv->data);
     free(qrv);
+}
+
+static int add_row_to_table(Table* t, QueryResult* qr)
+{
+    serialize_row(reserve_row_space(t, cacl_serialized_row_len(t->row_fmt, qr)), t->row_fmt, qr);
+    t->row_count++;
+    return 0;
+}
+
+static QueryResultVal* parse_insert_row_val(ColFmt* cf, Ast* a)
+{
+    AstVal* av;
+    assert(a->kind == AST_VAL);
+    int i;
+    double d;
+
+    av = (AstVal*)a;
+    QueryResultVal* qrv;
+    qrv = smalloc(sizeof(QueryResultVal));
+    qrv->type = cf->type;
+
+    if (GET_AV_TYPE(a) == AVT_STR) {
+        if (cf->type == C_CHAR || cf->type == C_VARCHAR) {
+            qrv->data = strdup(GET_AV_STR(a));
+        } else if (cf->type == C_INT) {
+            i = atoi(GET_AV_STR(a));
+            qrv->data = smalloc(sizeof(int));
+            memcpy(qrv->data, &i, sizeof(int));
+        } else {
+            // double
+            d = atoi(GET_AV_STR(a));
+            qrv->data = smalloc(sizeof(double));
+            memcpy(qrv->data, &d, sizeof(double));
+        }
+    } else if (GET_AV_TYPE(a) == AVT_INT) {
+        if (cf->type == C_CHAR || cf->type == C_VARCHAR) {
+            qrv->data = strdup(""); // TODO
+        } else if (cf->type == C_INT) {
+            i = GET_AV_INT(a);
+            qrv->data = smalloc(sizeof(int));
+            memcpy(qrv->data, &i, sizeof(int));
+        } else {
+            // double
+            qrv->data = smalloc(sizeof(double));
+            d = (double)GET_AV_INT(a);
+            memcpy(qrv->data, &d, sizeof(double));
+        }
+    } else if (GET_AV_TYPE(a) == AVT_DOUBLE) {
+        if (cf->type == C_CHAR || cf->type == C_VARCHAR) {
+            qrv->data = strdup(""); // TODO
+        } else if (cf->type == C_INT) {
+            qrv->data = smalloc(sizeof(int));
+            i = (int)GET_AV_DOUBLE(a);
+            memcpy(qrv->data, &i, sizeof(int));
+        } else {
+            // double
+            qrv->data = smalloc(sizeof(double));
+            d = GET_AV_DOUBLE(a);
+            memcpy(qrv->data, &d, sizeof(double));
+        }
+    } else {
+        return NULL;
+    }
+
+    return qrv;
+}
+
+static QueryResult* parse_insert_row(RowFmt* rf, Ast* a)
+{
+    assert(a->kind == AST_INSERT_VAL_LIST);
+
+    QueryResult* qr;
+
+    qr = smalloc(sizeof(QueryResultVal*) * rf->origin_cols_count);
+
+    for (int i = 0; i < rf->origin_cols_count; i++) {
+        qr[i] = parse_insert_row_val(&rf->cols_fmt[i], a->child[i]);
+    }
+
+    return qr;
 }
 
 /**
@@ -382,10 +328,9 @@ int insert_row(DB* d, Ast* a)
 {
     assert(a->kind == AST_INSERT);
 
-    Page* page;
-    int size;
     Table* t;
     Ast *table_name, *row_list, *val_list;
+    QueryResult* qr;
 
     table_name = a->child[0];
     row_list = a->child[1];
@@ -403,13 +348,9 @@ int insert_row(DB* d, Ast* a)
             return -1;
         }
 
-        size = cacl_serialized_row_len(t->row_fmt, val_list);
-        page = find_free_page(t, size);
-        serialize_row(get_page_tail(page), t->row_fmt, val_list);
-        page->header.row_count++;
-        page->header.tail += size;
-        t->row_count++;
-        t->free_map[page->header.page_num] -= size;
+        qr = parse_insert_row(t->row_fmt, val_list);
+        add_row_to_table(t, qr);
+        destory_query_result(qr, t->row_fmt->origin_cols_count);
     }
 
     return 0;
@@ -466,6 +407,8 @@ QueryResultVal* get_real_val_by_op(Table* t, void* row, Ast* op)
         qrv->data = smalloc(sizeof(int));
         where_res = get_where_expr_res(t, row, op);
         memcpy(qrv->data, &where_res, sizeof(int));
+    } else {
+        return NULL;
     }
 
     return qrv;
@@ -615,6 +558,11 @@ int cmd_compare(Table* t, void* row, Ast* op1, Ast* op2, ExprOp op)
     return res;
 }
 
+inline int get_table_row_cnt(Table* t)
+{
+    return t->row_count;
+}
+
 static int get_where_expr_res(Table* t, void* row, Ast* where_expr)
 {
     assert(where_expr->kind == AST_WHERE_EXP || where_expr->kind == AST_VAL);
@@ -690,11 +638,11 @@ QueryResult* filter_row(Table* t, Cursor* c, Ast* expect_cols, Ast* where_top_ex
             }
 
             // 移动指针
-            cursor_next(c);
+            cursor_next(c, 1);
             return qr;
         } else {
             // 继续下一条
-            cursor_next(c);
+            cursor_next(c, 1);
         }
     }
 

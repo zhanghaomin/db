@@ -10,13 +10,13 @@ TDIR = tests
 SDIR = src
 ODIR = src/obj
 
-_TOBJ = ast_test.o create_insert_test.o persist_test.o select_test.o
+_TOBJ =  create_insert_test.o
 TOBJ = $(patsubst %, $(ODIR)/%, $(_TOBJ))
 
-_OBJ = ast.o ht.o parser.o scanner.o table.o util.o cursor.o pager.o fmt.o
+_OBJ = ast.o ht.o parser.o scanner.o table.o util.o cursor.o pager.o fmt.o row.o
 OBJ = $(patsubst %, $(ODIR)/%, $(_OBJ))
 
-_DOBJ = ast.o ht.o parser.o scanner.o table.o util.o cursor.o pager.o fmt.o cli.o linenoise.o
+_DOBJ = ast.o ht.o parser.o scanner.o table.o util.o cursor.o pager.o fmt.o cli.o row.o linenoise.o
 DOBJ = $(patsubst %, $(ODIR)/%, $(_DOBJ))
 
 _DEP = ast.h ht.h table.h util.h linenoise.h
