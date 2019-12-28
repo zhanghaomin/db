@@ -32,13 +32,6 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     assert(t->data_fd > 0);
     assert(access("t_txzj_miniapp_white_list.dat", 0) == 0);
     assert(t->row_count == 27);
-    // assert(t->max_page_num == 0);
-
-    // for (int i = 0; i < MAX_PAGE_CNT_P_TABLE; i++) {
-    //     assert(t->pager->pages[i] == NULL);
-    //     assert(t->free_map[i] == PAGE_SIZE - sizeof(t->pager->pages[i]->header));
-    // }
-
     RowFmt* rf;
     rf = t->row_fmt;
     // CREATE TABLE `txzj_miniapp_white_list` ( `id` int(11) , `shop_id` int(20), `nick` char(255) , `online_code` varchar(256), `create_time` int(20),  `update_time` int(20)  );

@@ -21,6 +21,11 @@ Page* get_page(Table* t, int page_num)
     return t->pager->pages[page_num];
 }
 
+static int get_page_header_size()
+{
+    return sizeof(Page);
+}
+
 int flush_page(Table* t, int page_num)
 {
     if (t->pager->pages[page_num] == NULL) {
@@ -69,27 +74,34 @@ inline void get_dir_info(Page* p, int dir_num, int* is_delete, int* row_offset)
     }
 }
 
+static inline int get_last_page_dir_num(Page* p)
+{
+    return get_page_dir_cnt(p) - 1;
+}
+
 // | header | page_directory | ... | recs |
 // page_directory => | is_delete | offset | ...
-void* reserve_row_space(Table* t, int size)
+Page* reserve_new_row_space(Table* t, int size, int* dir_num)
 {
     Page* find_page;
-    void* free_space;
     int offset;
 
     for (int i = 0; i <= MAX_PAGE_CNT_P_TABLE; i++) {
         // 预留空间给page_directory
         if (size + get_sizeof_dir() <= t->free_map[i]) {
             find_page = get_page(t, i);
-            if (find_page->header.dir_cnt == 0) {
-                free_space = (void*)find_page + PAGE_SIZE - size;
+            *dir_num = get_page_dir_cnt(find_page);
+
+            if (*dir_num == 0) {
+                offset = PAGE_SIZE - get_page_header_size();
             } else {
-                free_space = row_real_pos(find_page, get_page_dir_cnt(find_page) - 1) - size;
+                get_dir_info(find_page, get_last_page_dir_num(find_page), NULL, &offset);
             }
-            offset = free_space - (void*)find_page->data;
+
+            offset -= size;
             set_dir_info(find_page, find_page->header.dir_cnt++, 0, offset);
             t->free_map[i] -= (size + get_sizeof_dir());
-            return free_space;
+            return find_page;
         }
     }
 

@@ -1,8 +1,15 @@
 #include "include/table.h"
 
-inline int get_row_len(void* row_start)
+static inline void* row_real_pos(Page* p, int dir_num)
 {
-    return ((RowHeader*)row_start)->row_len;
+    int offset;
+    get_dir_info(p, dir_num, NULL, &offset);
+    return (void*)(p->data + offset);
+}
+
+inline int get_row_len(Page* p, int dir_num)
+{
+    return ((RowHeader*)row_real_pos(p, dir_num))->row_len;
 }
 
 static inline int get_row_header_len()
@@ -24,14 +31,7 @@ inline void set_row_deleted(Page* p, int dir_num)
     set_dir_info(p, dir_num, 1, offset);
 }
 
-inline void* row_real_pos(Page* p, int dir_num)
-{
-    int offset;
-    get_dir_info(p, dir_num, NULL, &offset);
-    return (void*)(p->data + offset);
-}
-
-int cacl_serialized_row_len(RowFmt* rf, QueryResult* qr)
+int calc_serialized_row_len(RowFmt* rf, QueryResult* qr)
 {
     int result = 0;
     ColFmt* cf;
@@ -62,15 +62,16 @@ int cacl_serialized_row_len(RowFmt* rf, QueryResult* qr)
 */
 // 4 + 4 + 4 + 4 + 8 + 4 + 255 + 4 + 52
 // 4 + 4 + (4+4) + (4+4) + (4+255) + (4+4) + (4+4) + (4 + 52)
-int serialize_row(void* store, RowFmt* rf, QueryResult* qr)
+int serialize_row(Page* p, int dir_num, RowFmt* rf, QueryResult* qr)
 {
     ColFmt* cf;
     RowHeader rh;
     rh.row_len = 0;
-    void *dynamic_offset_store, *data_start;
+    void *dynamic_offset_store, *data_start, *store;
     int offset = 0;
     int val_len = 0;
 
+    store = row_real_pos(p, dir_num);
     data_start = store + get_row_header_len(); // skip header
     dynamic_offset_store = data_start;
     store = data_start + sizeof(int) * rf->dynamic_cols_count; // skip dynamic offset list
@@ -116,14 +117,16 @@ int serialize_row(void* store, RowFmt* rf, QueryResult* qr)
     return 0;
 }
 
-QueryResultVal* get_col_val(void* row, RowFmt* rf, char* col_name)
+QueryResultVal* get_col_val(Page* p, int dir_num, RowFmt* rf, char* col_name)
 {
     int col_num, dynamic_col_num, len, offset;
     void* col;
     ColFmt cf;
     QueryResultVal* qrv;
+    void* row;
     qrv = smalloc(sizeof(QueryResultVal));
     col_num = get_col_num_by_col_name(rf, col_name);
+    row = row_real_pos(p, dir_num);
     row += get_row_header_len();
 
     if (col_num == -1) {

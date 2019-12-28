@@ -16,6 +16,7 @@ int yyerror(char *s);
 "into" {return T_INTO;}
 "values" {return T_VALUES;}
 "update" {return T_UPDATE;}
+"set" {return T_SET;}
 "delete" {return T_DELETE;}
 "where" {return T_WHERE;}
 "from" {return T_FROM;}

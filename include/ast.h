@@ -21,14 +21,14 @@
 
 static const char* LimitedKindNameMap[][1024] UNUSED = {
     { "AST_VAL" }, // 0 child
-    { "AST_TABLE", "AST_ORDER_BY_COL", "AST_WHERE_TOP_EXP" }, // 1 child
-    { "AST_WHERE_EXP", "AST_COL_FMT", "AST_CREATE", "AST_INSERT", "AST_LIMIT", "AST_DELETE" }, // 2 child
-    {}, // 3 child
+    { "AST_TABLE", "AST_ORDER_BY_COL", "AST_WHERE_EXP" }, // 1 child
+    { "AST_EXP", "AST_COL_FMT", "AST_CREATE", "AST_INSERT", "AST_LIMIT", "AST_DELETE", "AST_UPDATE_SET" }, // 2 child
+    { "AST_UPDATE" }, // 3 child
     {}, // 4 child
     { "AST_SELECT" }, // 5 child
 };
 
-static const char* UnlimitedKindNameMap[] UNUSED = { "AST_EXPECT_COLS", "AST_COL_FMT_LIST", "AST_INSERT_ROW_LIST", "AST_INSERT_VAL_LIST", "AST_ORDER_BY" };
+static const char* UnlimitedKindNameMap[] UNUSED = { "AST_EXPECT_COLS", "AST_COL_FMT_LIST", "AST_INSERT_ROW_LIST", "AST_INSERT_VAL_LIST", "AST_ORDER_BY", "AST_UPDATE_SET_LIST" };
 
 typedef enum {
     // 0 child
@@ -36,14 +36,17 @@ typedef enum {
     // 1 child
     AST_TABLE = 1 << CHILD_CNT_OFFSET,
     AST_ORDER_BY_COL,
-    AST_WHERE_TOP_EXP,
+    AST_WHERE_EXP,
     // 2 child
-    AST_WHERE_EXP = 2 << CHILD_CNT_OFFSET,
+    AST_EXP = 2 << CHILD_CNT_OFFSET,
     AST_COL_FMT,
     AST_CREATE,
     AST_INSERT,
     AST_LIMIT,
     AST_DELETE,
+    AST_UPDATE_SET,
+    // 3 child
+    AST_UPDATE = 3 << CHILD_CNT_OFFSET,
     // 5 child
     AST_SELECT = 5 << CHILD_CNT_OFFSET,
     // unlimited
@@ -51,7 +54,8 @@ typedef enum {
     AST_COL_FMT_LIST,
     AST_INSERT_ROW_LIST,
     AST_INSERT_VAL_LIST,
-    AST_ORDER_BY
+    AST_ORDER_BY,
+    AST_UPDATE_SET_LIST
 } AstKind;
 
 // %left T_OR

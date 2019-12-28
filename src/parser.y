@@ -8,17 +8,17 @@ int yylex();
 int yyerror(char *s);
 %}
 
-%token T_SELECT T_INSERT T_INTO T_VALUES T_UPDATE T_DELETE T_ORDER T_BY T_ASC T_DESC
+%token T_INT T_VARCHAR T_CHAR T_DOUBLE
+%token T_SELECT T_INSERT T_INTO T_VALUES T_UPDATE T_DELETE T_ORDER T_BY T_ASC T_DESC 
 %token T_WHERE T_FROM T_SET T_CREATE T_TABLE T_LIMIT
 %token T_NEQ T_LTE T_GTE T_NOT
-%token T_INT T_CHAR T_VARCHAR T_DOUBLE
 %token T_AND T_OR
 %token <ast> T_IDENTIFIER T_LITERAL
 %token <ast> T_NUMBER
 
 %type <num> col_type
 %type <ast> topstmt select_stmt where expr cols_stmt table_name create_table_stmt order_by order_by_col_list order_by_col limit limit_clause
-%type <ast> col_fmt_stmt col_fmt_list_stmt insert_row_list_stmt insert_value_list_stmt insert_stmt insert_value delete_stmt
+%type <ast> col_fmt_stmt col_fmt_list_stmt insert_row_list_stmt insert_value_list_stmt insert_stmt insert_value delete_stmt update_stmt set_stmt set_clause_stmt
 
 %left T_OR
 %left T_AND
@@ -42,6 +42,20 @@ topstmt:
     | create_table_stmt ';' { $$ = $1; G_AST = $$; YYACCEPT; }
     | insert_stmt ';' { $$ = $1; G_AST = $$; YYACCEPT; }
     | delete_stmt ';' { $$ = $1; G_AST = $$; YYACCEPT; }
+    | update_stmt ';' { $$ = $1; G_AST = $$; YYACCEPT; }
+    ;
+
+update_stmt:
+      T_UPDATE table_name T_SET set_stmt where { $$ = create_ast(3, AST_UPDATE, -1, $2, $4, $5); }
+    ;
+
+set_stmt:
+      set_clause_stmt { $$ = create_ast(1, AST_UPDATE_SET_LIST, -1, $1); }
+    | set_stmt ',' set_clause_stmt { $$ = ast_add_child($1, $3); }
+    ;
+
+set_clause_stmt:
+      T_IDENTIFIER '=' expr { $$ = create_ast(2, AST_UPDATE_SET, -1, $1, $3); }
     ;
 
 delete_stmt:
@@ -124,31 +138,31 @@ table_name:
 
 where:
       /* empty */ { $$ = NULL; }
-    | T_WHERE expr { $$ = create_ast(1, AST_WHERE_TOP_EXP, -1, $2); }
+    | T_WHERE expr { $$ = create_ast(1, AST_WHERE_EXP, -1, $2); }
     ;
 
 expr:
       T_NUMBER { $$ = $1; }
     | T_LITERAL { $$ = $1; }
     | T_IDENTIFIER { $$ = $1; }
-    | expr '+' expr { $$ = create_ast(2, AST_WHERE_EXP, E_ADD, $1, $3); }
-    | expr '-' expr { $$ = create_ast(2, AST_WHERE_EXP, E_SUB, $1, $3); }
-    | expr '*' expr { $$ = create_ast(2, AST_WHERE_EXP, E_MUL, $1, $3); }
-    | expr '/' expr { $$ = create_ast(2, AST_WHERE_EXP, E_DIV, $1, $3); }
-    | expr '%' expr { $$ = create_ast(2, AST_WHERE_EXP, E_MOD, $1, $3); }
-    | expr '&' expr { $$ = create_ast(2, AST_WHERE_EXP, E_B_AND, $1, $3); }
-    | expr '^' expr { $$ = create_ast(2, AST_WHERE_EXP, E_B_XOR, $1, $3); }
-    | expr '|' expr { $$ = create_ast(2, AST_WHERE_EXP, E_B_OR, $1, $3); }
-    | '~' expr { $$ = create_ast(1, AST_WHERE_EXP, E_B_NOT, $2); }
-    | expr '=' expr { $$ = create_ast(2, AST_WHERE_EXP, E_EQ, $1, $3); }
-    | expr T_NEQ expr { $$ = create_ast(2, AST_WHERE_EXP, E_NEQ, $1, $3); }
-    | expr '>' expr { $$ = create_ast(2, AST_WHERE_EXP, E_GT, $1, $3); }
-    | expr T_GTE expr { $$ = create_ast(2, AST_WHERE_EXP, E_GTE, $1, $3); }
-    | expr '<' expr { $$ = create_ast(2, AST_WHERE_EXP, E_LT, $1, $3); }
-    | expr T_LTE expr { $$ = create_ast(2, AST_WHERE_EXP, E_LTE, $1, $3); }
-    | expr T_AND expr { $$ = create_ast(2, AST_WHERE_EXP, E_AND, $1, $3); }
-    | expr T_OR expr { $$ = create_ast(2, AST_WHERE_EXP, E_OR, $1, $3); }
-    | T_NOT expr { $$ = create_ast(1, AST_WHERE_EXP, E_NOT, $2); }
+    | expr '+' expr { $$ = create_ast(2, AST_EXP, E_ADD, $1, $3); }
+    | expr '-' expr { $$ = create_ast(2, AST_EXP, E_SUB, $1, $3); }
+    | expr '*' expr { $$ = create_ast(2, AST_EXP, E_MUL, $1, $3); }
+    | expr '/' expr { $$ = create_ast(2, AST_EXP, E_DIV, $1, $3); }
+    | expr '%' expr { $$ = create_ast(2, AST_EXP, E_MOD, $1, $3); }
+    | expr '&' expr { $$ = create_ast(2, AST_EXP, E_B_AND, $1, $3); }
+    | expr '^' expr { $$ = create_ast(2, AST_EXP, E_B_XOR, $1, $3); }
+    | expr '|' expr { $$ = create_ast(2, AST_EXP, E_B_OR, $1, $3); }
+    | '~' expr { $$ = create_ast(1, AST_EXP, E_B_NOT, $2); }
+    | expr '=' expr { $$ = create_ast(2, AST_EXP, E_EQ, $1, $3); }
+    | expr T_NEQ expr { $$ = create_ast(2, AST_EXP, E_NEQ, $1, $3); }
+    | expr '>' expr { $$ = create_ast(2, AST_EXP, E_GT, $1, $3); }
+    | expr T_GTE expr { $$ = create_ast(2, AST_EXP, E_GTE, $1, $3); }
+    | expr '<' expr { $$ = create_ast(2, AST_EXP, E_LT, $1, $3); }
+    | expr T_LTE expr { $$ = create_ast(2, AST_EXP, E_LTE, $1, $3); }
+    | expr T_AND expr { $$ = create_ast(2, AST_EXP, E_AND, $1, $3); }
+    | expr T_OR expr { $$ = create_ast(2, AST_EXP, E_OR, $1, $3); }
+    | T_NOT expr { $$ = create_ast(1, AST_EXP, E_NOT, $2); }
     | '(' expr ')' { $$ = $2; }
     ;
 

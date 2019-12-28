@@ -56,7 +56,6 @@ typedef struct {
     HashTable* tables;
 } DB;
 
-//
 typedef struct {
     char* name;
     int data_fd;
@@ -75,46 +74,47 @@ typedef struct {
     int page_dir_num; // 当前指向page中第几个目录项
 } Cursor;
 
-DB* db_init();
 void db_destory(DB* d);
-Table* open_table(DB* d, char* name);
-int create_table(DB* d, Ast* a);
-int get_table_row_cnt(Table* t);
 int insert_row(DB* d, Ast* a);
 int delete_row(DB* d, Ast* a);
-QueryResult* get_table_header(Table* t);
-void destory_query_result_list(QueryResultList* qrl, int qrl_len, int qr_len);
+int create_table(DB* d, Ast* a);
+int update_table(DB* d, Ast* update);
+DB* db_init();
+Table* open_table(DB* d, char* name);
 QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_count);
-int get_query_result_val_len(QueryResultVal* qrv);
-int get_dynamic_col_num_by_col_name(RowFmt* rf, char* col_name);
-int get_col_num_by_col_name(RowFmt* rf, char* col_name);
+
+void destory_query_result_list(QueryResultList* qrl, int qrl_len, int qr_len);
+int get_table_row_cnt(Table* t);
 int get_table_max_page_num(Table* t);
+int get_query_result_val_len(QueryResultVal* qrv);
+int get_col_num_by_col_name(RowFmt* rf, char* col_name);
+int get_dynamic_col_num_by_col_name(RowFmt* rf, char* col_name);
+QueryResult* get_table_header(Table* t);
 
 void println_rows(QueryResultList* qrl, int qrl_len, int qr_len);
 
-Cursor* cursor_init(Table* t);
 void cursor_destory(Cursor* c);
-void* cursor_value(Cursor* c);
-int cursor_is_end(Cursor* c);
 void cursor_next(Cursor* c);
 void cursor_rewind(Cursor* c);
-Page* cursor_page(Cursor* c);
+int cursor_is_end(Cursor* c);
 int cursor_dir_num(Cursor* c);
 int cursor_value_is_deleted(Cursor* c);
+Page* cursor_page(Cursor* c);
+Cursor* cursor_init(Table* t);
 
-Page* get_page(Table* t, int page_num);
-int get_page_dir_cnt(Page* p);
 int get_page_num(Page* p);
-void* reserve_row_space(Table* t, int size);
+int get_page_dir_cnt(Page* p);
 int flush_page(Table* t, int page_num);
 void set_dir_info(Page* p, int dir_num, int is_delete, int row_offset);
 void get_dir_info(Page* p, int dir_num, int* is_delete, int* row_offset);
+Page* get_page(Table* t, int page_num);
+Page* reserve_new_row_space(Table* t, int size, int* dir_num);
 
 void set_row_deleted(Page* p, int dir_num);
+int get_row_len(Page* p, int dir_num);
 int row_is_delete(Page* p, int dir_num);
-void* row_real_pos(Page* p, int dir_num);
-int serialize_row(void* store, RowFmt* rf, QueryResult* qr);
-QueryResultVal* get_col_val(void* row, RowFmt* rf, char* col_name);
-int cacl_serialized_row_len(RowFmt* rf, QueryResult* qr);
+int calc_serialized_row_len(RowFmt* rf, QueryResult* qr);
+int serialize_row(Page* p, int dir_num, RowFmt* rf, QueryResult* qr);
+QueryResultVal* get_col_val(Page* p, int dir_num, RowFmt* rf, char* col_name);
 
 #endif

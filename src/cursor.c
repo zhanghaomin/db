@@ -25,11 +25,6 @@ inline int cursor_dir_num(Cursor* c)
     return c->page_dir_num;
 }
 
-void* cursor_value(Cursor* c)
-{
-    return row_real_pos(cursor_page(c), cursor_dir_num(c));
-}
-
 static inline int cursor_reach_page_end(Cursor* c)
 {
     return cursor_dir_num(c) == get_page_dir_cnt(c->page);

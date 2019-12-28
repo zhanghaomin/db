@@ -7,7 +7,7 @@
 #include <string.h>
 #include <unistd.h>
 
-static int get_where_expr_res(Table* t, void* row, Ast* where_expr);
+static int get_where_expr_res(Table* t, Page* p, int dir_num, Ast* where_expr);
 
 void destory_query_result_list(QueryResultList* qrl, int qrl_len, int qr_len)
 {
@@ -250,11 +250,15 @@ void destory_query_result_val(QueryResultVal* qrv)
 
 static int add_row_to_table(Table* t, QueryResult* qr)
 {
-    serialize_row(reserve_row_space(t, cacl_serialized_row_len(t->row_fmt, qr)), t->row_fmt, qr);
+    int dir_num;
+    Page* p;
+    p = reserve_new_row_space(t, calc_serialized_row_len(t->row_fmt, qr), &dir_num);
+    serialize_row(p, dir_num, t->row_fmt, qr);
     t->row_count++;
     return 0;
 }
 
+// TODO: 类型转化移到serialize_row中
 static QueryResultVal* parse_insert_row_val(ColFmt* cf, Ast* a)
 {
     AstVal* av;
@@ -335,6 +339,7 @@ int insert_row(DB* d, Ast* a)
 {
     assert(a->kind == AST_INSERT);
 
+    int res = 0;
     Table* t;
     Ast *table_name, *row_list, *val_list;
     QueryResult* qr;
@@ -343,24 +348,25 @@ int insert_row(DB* d, Ast* a)
     row_list = a->child[1];
 
     if ((t = open_table(d, GET_AV_STR(table_name->child[0]))) == NULL) {
-        printf("table %s not exist\n", GET_AV_STR(table_name->child[0]));
-        return -1;
+        printf("table %s not exist.\n", GET_AV_STR(table_name->child[0]));
+        return 0;
     }
 
     for (int i = 0; i < row_list->children; i++) {
         val_list = row_list->child[i];
 
         if (val_list->children != t->row_fmt->origin_cols_count) {
-            printf("expect %d cols, but given %d rows", t->row_fmt->origin_cols_count, val_list->children);
-            return -1;
+            printf("expect %d cols, but given %d rows.", t->row_fmt->origin_cols_count, val_list->children);
+            break;
         }
 
         qr = parse_insert_row(t->row_fmt, val_list);
         add_row_to_table(t, qr);
         destory_query_result(qr, t->row_fmt->origin_cols_count);
+        res++;
     }
 
-    return 0;
+    return res;
 }
 
 static int qrv_to_bool(QueryResultVal* qrv)
@@ -381,16 +387,16 @@ static int qrv_to_bool(QueryResultVal* qrv)
     return i != 0;
 }
 
-QueryResultVal* get_real_val_by_op(Table* t, void* row, Ast* op)
+QueryResultVal* get_real_val_by_op(Table* t, Page* p, int dir_num, Ast* op)
 {
     QueryResultVal* qrv;
     int where_res = 0;
 
-    assert(op->kind == AST_VAL || op->kind == AST_WHERE_EXP);
+    assert(op->kind == AST_VAL || op->kind == AST_EXP);
 
     if (op->kind == AST_VAL) {
         if (GET_AV_TYPE(op) == AVT_ID) {
-            qrv = get_col_val(row, t->row_fmt, GET_AV_STR(op));
+            qrv = get_col_val(p, dir_num, t->row_fmt, GET_AV_STR(op));
         } else if (GET_AV_TYPE(op) == AVT_DOUBLE) {
             qrv = smalloc(sizeof(QueryResultVal));
             qrv->type = C_DOUBLE;
@@ -408,11 +414,11 @@ QueryResultVal* get_real_val_by_op(Table* t, void* row, Ast* op)
             qrv->data = smalloc(GET_AV_LEN(op));
             copy_ast_val(qrv->data, (AstVal*)op);
         }
-    } else if (op->kind == AST_WHERE_EXP) {
+    } else if (op->kind == AST_EXP) {
         qrv = smalloc(sizeof(QueryResultVal));
         qrv->type = C_INT;
         qrv->data = smalloc(sizeof(int));
-        where_res = get_where_expr_res(t, row, op);
+        where_res = get_where_expr_res(t, p, dir_num, op);
         memcpy(qrv->data, &where_res, sizeof(int));
     } else {
         return NULL;
@@ -493,15 +499,15 @@ int do_bool_op(int op1, int op2, ExprOp op)
     return 0;
 }
 
-int cmd_bool(Table* t, void* row, Ast* op1, Ast* op2, ExprOp op)
+int cmd_bool(Table* t, Page* p, int dir_num, Ast* op1, Ast* op2, ExprOp op)
 {
     QueryResultVal *op1_qrv, *op2_qrv;
     int res;
 
-    op1_qrv = get_real_val_by_op(t, row, op1);
+    op1_qrv = get_real_val_by_op(t, p, dir_num, op1);
 
     if (op != E_NOT) {
-        op2_qrv = get_real_val_by_op(t, row, op2);
+        op2_qrv = get_real_val_by_op(t, p, dir_num, op2);
         res = do_bool_op(qrv_to_bool(op1_qrv), qrv_to_bool(op2_qrv), op);
         destory_query_result_val(op1_qrv);
         destory_query_result_val(op2_qrv);
@@ -514,14 +520,14 @@ int cmd_bool(Table* t, void* row, Ast* op1, Ast* op2, ExprOp op)
 }
 
 // 如果一个是字符串，一个是数字，那么都转成数字比较
-int cmd_compare(Table* t, void* row, Ast* op1, Ast* op2, ExprOp op)
+int cmd_compare(Table* t, Page* p, int dir_num, Ast* op1, Ast* op2, ExprOp op)
 {
     int res, i1, i2;
     double d1, d2;
     QueryResultVal *op1_qrv, *op2_qrv;
 
-    op1_qrv = get_real_val_by_op(t, row, op1);
-    op2_qrv = get_real_val_by_op(t, row, op2);
+    op1_qrv = get_real_val_by_op(t, p, dir_num, op1);
+    op2_qrv = get_real_val_by_op(t, p, dir_num, op2);
 
     if (op1_qrv->type == C_INT) {
         memcpy(&i1, op1_qrv->data, sizeof(int));
@@ -570,9 +576,16 @@ inline int get_table_row_cnt(Table* t)
     return t->row_count;
 }
 
-static int get_where_expr_res(Table* t, void* row, Ast* where_expr)
+static QueryResultVal* get_expr_res(Table* t, Page* p, int dir_num, Ast* expr)
 {
-    assert(where_expr->kind == AST_WHERE_EXP || where_expr->kind == AST_VAL);
+    assert(expr->kind == AST_EXP || expr->kind == AST_VAL);
+    // TODO: 计算表达式的值
+    return NULL;
+}
+
+static int get_where_expr_res(Table* t, Page* p, int dir_num, Ast* where_expr)
+{
+    assert(where_expr->kind == AST_EXP || where_expr->kind == AST_VAL);
 
     Ast *op1, *op2;
     ExprOp op;
@@ -580,7 +593,7 @@ static int get_where_expr_res(Table* t, void* row, Ast* where_expr)
     int res = 0;
 
     if (where_expr->kind == AST_VAL) {
-        qrv = get_real_val_by_op(t, row, where_expr);
+        qrv = get_real_val_by_op(t, p, dir_num, where_expr);
         res = qrv_to_bool(qrv);
         destory_query_result_val(qrv);
         return res;
@@ -591,24 +604,42 @@ static int get_where_expr_res(Table* t, void* row, Ast* where_expr)
     op = where_expr->attr;
 
     if (op == E_EQ || op == E_NEQ || op == E_GT || op == E_GTE || op == E_LT || op == E_LTE) {
-        return cmd_compare(t, row, op1, op2, op);
+        return cmd_compare(t, p, dir_num, op1, op2, op);
     }
 
     if (op == E_NOT || op == E_OR || op == E_AND) {
-        return cmd_bool(t, row, op1, op2, op);
+        return cmd_bool(t, p, dir_num, op1, op2, op);
     }
 
     return 0;
+}
+
+QueryResult* get_table_row(Table* t, Page* p, int dir_num, int* col_cnt)
+{
+    QueryResult* qr;
+    qr = smalloc(t->row_fmt->origin_cols_count * sizeof(QueryResultVal*));
+
+    for (int i = 0; i < t->row_fmt->origin_cols_count; i++) {
+        qr[i] = get_col_val(p, dir_num, t->row_fmt, t->row_fmt->origin_cols_name[i]);
+    }
+
+    if (col_cnt != NULL) {
+        *col_cnt = t->row_fmt->origin_cols_count;
+    }
+
+    return qr;
 }
 
 QueryResult* filter_row(Table* t, Cursor* c, Ast* expect_cols, Ast* where_top_expr)
 {
     QueryResult* qr;
     QueryResultVal* qrv;
+    QueryResult* full_row;
     int col_cnt = 0;
+    int table_row_count = 0;
 
     while (!cursor_is_end(c)) {
-        if (!cursor_value_is_deleted(c) && (where_top_expr == NULL || get_where_expr_res(t, cursor_value(c), where_top_expr->child[0]) == 1)) {
+        if (!cursor_value_is_deleted(c) && (where_top_expr == NULL || get_where_expr_res(t, cursor_page(c), cursor_dir_num(c), where_top_expr->child[0]) == 1)) {
             qr = smalloc(expect_cols->children * sizeof(QueryResultVal*));
             // 符合条件,返回这条数据
             for (int i = 0; i < expect_cols->children; i++) {
@@ -632,13 +663,14 @@ QueryResult* filter_row(Table* t, Cursor* c, Ast* expect_cols, Ast* where_top_ex
                     qr[col_cnt++] = qrv;
                 } else {
                     if (strcmp(GET_AV_STR(expect_cols->child[i]), "*") == 0) {
-                        for (int j = 0; j < t->row_fmt->origin_cols_count; j++) {
-                            col_cnt++;
-                            qr = realloc(qr, col_cnt * sizeof(QueryResultVal*));
-                            qr[col_cnt - 1] = get_col_val(cursor_value(c), t->row_fmt, t->row_fmt->origin_cols_name[j]);
+                        full_row = get_table_row(t, cursor_page(c), cursor_dir_num(c), &table_row_count);
+
+                        for (int i = 0; i < table_row_count; i++) {
+                            qr = realloc(qr, ++col_cnt * sizeof(QueryResultVal*));
+                            qr[col_cnt - 1] = full_row[i];
                         }
                     } else {
-                        qrv = get_col_val(cursor_value(c), t->row_fmt, GET_AV_STR(expect_cols->child[i]));
+                        qrv = get_col_val(cursor_page(c), cursor_dir_num(c), t->row_fmt, GET_AV_STR(expect_cols->child[i]));
                         qr[col_cnt++] = qrv;
                     }
                 }
@@ -668,7 +700,7 @@ int check_and_get_select_col_count(Table* t, Ast* expect_cols)
                 continue;
             }
             if (get_col_num_by_col_name(t->row_fmt, GET_AV_STR(expect_cols->child[i])) == -1) {
-                printf("col %s not exist\n", GET_AV_STR(expect_cols->child[i]));
+                printf("col `%s` not exist.\n", GET_AV_STR(expect_cols->child[i]));
                 return -1;
             }
         }
@@ -688,15 +720,13 @@ QueryResult* get_select_header(Table* t, Ast* expect_cols)
     for (int i = 0; i < expect_cols->children; i++) {
         if (GET_AV_TYPE(expect_cols->child[i]) == AVT_ID && strcmp(GET_AV_STR(expect_cols->child[i]), "*") == 0) {
             for (int j = 0; j < t->row_fmt->origin_cols_count; j++) {
-                count++;
-                qr = realloc(qr, sizeof(QueryResultVal*) * count);
+                qr = realloc(qr, sizeof(QueryResultVal*) * ++count);
                 qr[count - 1] = smalloc(sizeof(QueryResultVal));
                 qr[count - 1]->data = strdup(t->row_fmt->origin_cols_name[j]);
                 qr[count - 1]->type = C_CHAR;
             }
         } else {
-            count++;
-            qr = realloc(qr, sizeof(QueryResultVal*) * count);
+            qr = realloc(qr, sizeof(QueryResultVal*) * ++count);
             qr[count - 1] = smalloc(sizeof(QueryResultVal));
             qr[count - 1]->data = strdup(GET_AV_STR(expect_cols->child[i]));
             qr[count - 1]->type = C_CHAR;
@@ -712,11 +742,11 @@ int check_where_ast_valid(Table* t, Ast* where_expr)
         return 1;
     }
 
-    assert(where_expr->kind == AST_WHERE_EXP || where_expr->kind == AST_VAL);
+    assert(where_expr->kind == AST_EXP || where_expr->kind == AST_VAL);
 
     if (where_expr->kind == AST_VAL) {
         if (GET_AV_TYPE(where_expr) == AVT_ID && get_col_num_by_col_name(t->row_fmt, GET_AV_STR(where_expr)) == -1) {
-            printf("col `%s` not exist\n", GET_AV_STR(where_expr));
+            printf("col `%s` not exist.\n", GET_AV_STR(where_expr));
             return 0;
         }
         return 1;
@@ -741,7 +771,7 @@ QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_cou
     t = open_table(d, GET_AV_STR(table_name->child[0]));
 
     if (t == NULL) {
-        printf("table `%s` not exits\n", GET_AV_STR(table_name->child[0]));
+        printf("table `%s` not exits.\n", GET_AV_STR(table_name->child[0]));
         return NULL;
     }
 
@@ -758,13 +788,11 @@ QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_cou
         return NULL;
     }
 
-    (*row_count)++;
-    qrl = realloc(qrl, ((*row_count)) * sizeof(QueryResult*));
+    qrl = realloc(qrl, (++(*row_count)) * sizeof(QueryResult*));
     qrl[(*row_count) - 1] = get_select_header(t, expect_cols);
 
     while ((qr = filter_row(t, c, expect_cols, where_top_list)) != NULL) {
-        (*row_count)++;
-        qrl = realloc(qrl, (*row_count) * sizeof(QueryResult*));
+        qrl = realloc(qrl, ++(*row_count) * sizeof(QueryResult*));
         qrl[(*row_count) - 1] = qr;
     }
 
@@ -792,7 +820,7 @@ int delete_row(DB* d, Ast* delete_ast)
     t = open_table(d, GET_AV_STR(table_name->child[0]));
 
     if (t == NULL) {
-        printf("table `%s` not exits\n", GET_AV_STR(table_name->child[0]));
+        printf("table `%s` not exits.\n", GET_AV_STR(table_name->child[0]));
         return 0;
     }
 
@@ -803,14 +831,95 @@ int delete_row(DB* d, Ast* delete_ast)
     c = cursor_init(t);
 
     while (!cursor_is_end(c)) {
-        if (!cursor_value_is_deleted(c) && (where_top_list == NULL || get_where_expr_res(t, cursor_value(c), where_top_list->child[0]) == 1)) {
+        if (!cursor_value_is_deleted(c) && (where_top_list == NULL || get_where_expr_res(t, cursor_page(c), cursor_dir_num(c), where_top_list->child[0]) == 1)) {
             remove_row_from_table(t, c->page, c->page_dir_num);
             deleted_row_count++;
         }
         cursor_next(c);
     }
 
+    cursor_destory(c);
     return deleted_row_count;
+}
+
+static int check_set_list_valid(Table* t, Ast* set_list)
+{
+    assert(set_list->kind == AST_UPDATE_SET_LIST);
+
+    for (int i = 0; i < set_list->children; i++) {
+        if (get_col_num_by_col_name(t->row_fmt, GET_AV_STR(set_list->child[i]->child[0])) == -1) {
+            printf("col `%s` not exist.\n", GET_AV_STR(set_list->child[i]->child[0]));
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+static void update_row(Table* t, Page* p, int dir_num, Ast* set_list)
+{
+    assert(set_list->kind == AST_UPDATE_SET_LIST);
+
+    // 获取原来的数据
+    QueryResult* qr;
+    QueryResultVal *val, *origin;
+    Ast *col_name, *expr;
+    int row_cnt, col_num;
+
+    qr = get_table_row(t, p, dir_num, &row_cnt);
+
+    for (int i = 0; i < set_list->children; i++) {
+        col_name = set_list->child[i]->child[0];
+        expr = set_list->child[i]->child[1];
+
+        val = get_expr_res(t, p, dir_num, expr);
+        col_num = get_col_num_by_col_name(t->row_fmt, GET_AV_STR(col_name));
+        origin = qr[col_num];
+        qr[col_num] = val;
+        destory_query_result_val(origin);
+    }
+    // TODO: 替换原有数据, 计算剩余空间是否足够, 足够则移动后续元素, 不够则删除原有元素, 并新增
+    // destory_query_result(qr, row_cnt);
+}
+
+int update_table(DB* d, Ast* update)
+{
+    assert(update->kind == AST_UPDATE);
+    Ast *set_list, *table_name, *where;
+    Table* t;
+    Cursor* c;
+    int updated_row_count = 0;
+
+    table_name = update->child[0];
+    set_list = update->child[1];
+    where = update->child[2];
+    t = open_table(d, GET_AV_STR(table_name->child[0]));
+
+    if (t == NULL) {
+        printf("table `%s` not exits.\n", GET_AV_STR(table_name->child[0]));
+        return 0;
+    }
+
+    if (where != NULL && !check_where_ast_valid(t, where->child[0])) {
+        return 0;
+    }
+
+    if (!check_set_list_valid(t, set_list)) {
+        return 0;
+    }
+
+    c = cursor_init(t);
+
+    while (!cursor_is_end(c)) {
+        if (!cursor_value_is_deleted(c) && (where == NULL || get_where_expr_res(t, cursor_page(c), cursor_dir_num(c), where->child[0]) == 1)) {
+            update_row(t, cursor_page(c), cursor_dir_num(c), set_list);
+            updated_row_count++;
+        }
+        cursor_next(c);
+    }
+
+    cursor_destory(c);
+    return updated_row_count;
 }
 
 // | len | table_count | table_fmt | ... |
@@ -920,7 +1029,7 @@ int create_table(DB* d, Ast* a)
     t->name = strdup(GET_AV_STR(table_name));
 
     if (ht_find(d->tables, t->name) != NULL) {
-        printf("table exist\n");
+        printf("table already exist.\n");
         return -1;
     }
 
