@@ -10,11 +10,6 @@ v0.0.1
 5. 一张表最大4096个page
 6. sql -> ast -> execute
 
-TODO:
-1. 存储结构增加page_directory
-2. update
-3. delete
-
-v0.0.2
+TODO v0.0.2
 1. 增加lru，可以设置最大缓存页数
 2. 移除单表最大4096个page限制
