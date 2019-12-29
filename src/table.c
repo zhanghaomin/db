@@ -791,15 +791,20 @@ QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_cou
 {
     assert(select_ast->kind == AST_SELECT);
 
-    Ast *table_name, *expect_cols, *where_top_list;
+    Ast *table_name, *expect_cols, *where_top_list, *order_by, *limit;
     Table* t;
     QueryResultList* qrl = NULL;
     QueryResult* qr;
     Cursor* c;
+    int offset = 0;
+    int lmt = -1;
 
     expect_cols = select_ast->child[0];
     table_name = select_ast->child[1];
     where_top_list = select_ast->child[2];
+    order_by = select_ast->child[3];
+    limit = select_ast->child[4];
+
     t = open_table(d, GET_AV_STR(table_name->child[0]));
 
     if (t == NULL) {
@@ -820,12 +825,26 @@ QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_cou
         return NULL;
     }
 
+    if (limit != NULL) {
+        offset = GET_AV_INT(limit->child[0]);
+        lmt = GET_AV_INT(limit->child[1]);
+    }
+
     qrl = realloc(qrl, (++(*row_count)) * sizeof(QueryResult*));
     qrl[(*row_count) - 1] = get_select_header(t, expect_cols);
 
     while ((qr = filter_row(t, c, expect_cols, where_top_list)) != NULL) {
+        if (offset-- > 0) {
+            destory_query_result(qr, *col_count);
+            continue;
+        }
+
         qrl = realloc(qrl, ++(*row_count) * sizeof(QueryResult*));
         qrl[(*row_count) - 1] = qr;
+
+        if (--lmt == 0) {
+            break;
+        }
     }
 
     cursor_destory(c);

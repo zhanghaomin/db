@@ -42,11 +42,13 @@ void print_ast_val(AstVal* av, int step, int lasts[])
 
 void print_ast2(Ast* a, int step, int last, int lasts[])
 {
+    print_space(step, last, lasts);
+
     if (a == NULL) {
+        printf("null\n");
         return;
     }
 
-    print_space(step, last, lasts);
     printf("%s:\n", get_kind_name(a->kind));
 
     if (a->kind == AST_VAL) {
@@ -60,7 +62,7 @@ void print_ast2(Ast* a, int step, int last, int lasts[])
         print_space(step + 1, 1, lasts);
         printf("child: \n");
         for (int i = 0; i < a->children; i++) {
-            print_ast2(a->child[i], step + 2, (i == a->children - 1) || (a->child[i + 1] == NULL), lasts);
+            print_ast2(a->child[i], step + 2, (i == a->children - 1), lasts);
         }
     }
 }
