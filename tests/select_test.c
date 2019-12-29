@@ -21,7 +21,6 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     FILE* f;
     f = fopen("./tests/select_test.sql", "r+");
     char s[4096];
-    lex_read_line(f, s, 4096);
 
     DB* d;
     int row_count = 0;
@@ -29,6 +28,7 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     d = db_init();
     QueryResultList* qrl;
 
+    lex_read_line(f, s, 4096);
     qrl = select_row(d, G_AST, &row_count, &field_count);
     assert(qrl != NULL);
     assert(row_count != 0);
@@ -44,6 +44,7 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     destory_query_result_list(qrl, row_count, field_count);
     assert(row_count != 0);
     assert(field_count != -1);
+
     db_destory(d);
     fclose(f);
     printf("select test pass\n");

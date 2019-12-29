@@ -1,5 +1,7 @@
 #include "include/table.h"
 
+static int write_row_to_page(Page* p, int dir_num, RowFmt* rf, QueryResult* qr);
+
 static inline void* row_real_pos(Page* p, int dir_num)
 {
     int offset;
@@ -31,7 +33,7 @@ inline void set_row_deleted(Page* p, int dir_num)
     set_dir_info(p, dir_num, 1, offset);
 }
 
-int calc_serialized_row_len(RowFmt* rf, QueryResult* qr)
+static int calc_serialized_row_len(RowFmt* rf, QueryResult* qr)
 {
     int result = 0;
     ColFmt* cf;
@@ -54,24 +56,69 @@ int calc_serialized_row_len(RowFmt* rf, QueryResult* qr)
     return result;
 }
 
-/*
-    || RowHeader || 1st dynamic offset || 2nd dynamic offset || ... || 1st reclen | 1st static rec || 2nd reclen | 2nd static rec || ... || 1st dynamic reclen | 1st dynamic rec || 2nd dynamic reclen | 2nd dynamic rec || ...
-                            |______________________________________________________________________________________________________________|
-                                                  |________________________________________________________________________________________________________________________________|
-     偏移量都是相对header的
-*/
-// 4 + 4 + 4 + 4 + 8 + 4 + 255 + 4 + 52
-// 4 + 4 + (4+4) + (4+4) + (4+255) + (4+4) + (4+4) + (4 + 52)
-int serialize_row(Page* p, int dir_num, RowFmt* rf, QueryResult* qr)
+static void translate_to_row_fmt(RowFmt* rf, QueryResult* qr)
+{
+    double d;
+    int n;
+
+    for (int i = 0; i < rf->origin_cols_count; i++) {
+        if (rf->cols_fmt[i].type == C_CHAR || rf->cols_fmt[i].type == C_VARCHAR) {
+            if (qr[i]->type == C_DOUBLE || qr[i]->type == C_INT) {
+                free(qr[i]->data);
+                qr[i]->data = strdup(""); // TODO
+            }
+        } else if (rf->cols_fmt[i].type == C_DOUBLE) {
+            if (qr[i]->type == C_VARCHAR || qr[i]->type == C_CHAR) {
+                d = atof(qr[i]->data);
+                free(qr[i]->data);
+                qr[i]->data = smalloc(sizeof(double));
+                memcpy(qr[i]->data, &d, sizeof(double));
+            } else if (qr[i]->type == C_INT) {
+                memcpy(&n, qr[i]->data, sizeof(int));
+                d = (double)n;
+                free(qr[i]->data);
+                qr[i]->data = smalloc(sizeof(double));
+                memcpy(qr[i]->data, &d, sizeof(double));
+            }
+        } else {
+            // int
+            if (qr[i]->type == C_VARCHAR || qr[i]->type == C_CHAR) {
+                n = atoi(qr[i]->data);
+                free(qr[i]->data);
+                qr[i]->data = smalloc(sizeof(int));
+                memcpy(qr[i]->data, &n, sizeof(int));
+            } else if (qr[i]->type == C_DOUBLE) {
+                memcpy(&d, qr[i]->data, sizeof(double));
+                n = (int)d;
+                free(qr[i]->data);
+                qr[i]->data = smalloc(sizeof(int));
+                memcpy(qr[i]->data, &n, sizeof(int));
+            }
+        }
+        qr[i]->type = rf->cols_fmt[i].type;
+    }
+}
+
+int replace_row(Table* t, Page* p, int dir_num, RowFmt* rf, QueryResult* qr)
+{
+    translate_to_row_fmt(rf, qr);
+    p = resize_row_space(t, p, &dir_num, calc_serialized_row_len(rf, qr));
+    return write_row_to_page(p, dir_num, rf, qr);
+}
+
+static int write_row_to_page(Page* p, int dir_num, RowFmt* rf, QueryResult* qr)
 {
     ColFmt* cf;
     RowHeader rh;
-    rh.row_len = 0;
-    void *dynamic_offset_store, *data_start, *store;
+    void *dynamic_offset_store, *data_start, *store, *origin_store;
     int offset = 0;
     int val_len = 0;
 
+    rh.row_len = calc_serialized_row_len(rf, qr);
     store = row_real_pos(p, dir_num);
+    origin_store = smalloc(rh.row_len);
+    memcpy(origin_store, store, rh.row_len);
+
     data_start = store + get_row_header_len(); // skip header
     dynamic_offset_store = data_start;
     store = data_start + sizeof(int) * rf->dynamic_cols_count; // skip dynamic offset list
@@ -87,8 +134,6 @@ int serialize_row(Page* p, int dir_num, RowFmt* rf, QueryResult* qr)
             memcpy(store, qr[i]->data, val_len);
             // important: 静态字段固定长度
             store += cf->len;
-            rh.row_len += sizeof(int);
-            rh.row_len += cf->len;
         }
     }
 
@@ -105,25 +150,38 @@ int serialize_row(Page* p, int dir_num, RowFmt* rf, QueryResult* qr)
             store += sizeof(int);
             memcpy(store, qr[i]->data, val_len); // 写入数据
             store += val_len;
-            rh.row_len += 2 * sizeof(int);
-            rh.row_len += val_len;
         }
     }
 
-    // 长度加上自己
-    rh.row_len += get_row_header_len();
     // 写入header
     memcpy(data_start - get_row_header_len(), &rh, get_row_header_len());
-    return 0;
+    return memcmp(origin_store, data_start - get_row_header_len(), rh.row_len) != 0;
+}
+
+/*
+    || RowHeader || 1st dynamic offset || 2nd dynamic offset || ... || 1st reclen | 1st static rec || 2nd reclen | 2nd static rec || ... || 1st dynamic reclen | 1st dynamic rec || 2nd dynamic reclen | 2nd dynamic rec || ...
+                            |______________________________________________________________________________________________________________|
+                                                  |________________________________________________________________________________________________________________________________|
+     偏移量都是相对header的
+*/
+// 4 + 4 + 4 + 4 + 8 + 4 + 255 + 4 + 52
+// 4 + 4 + (4+4) + (4+4) + (4+255) + (4+4) + (4+4) + (4 + 52)
+int serialize_row(Table* t, RowFmt* rf, QueryResult* qr)
+{
+    Page* p;
+    int dir_num;
+
+    translate_to_row_fmt(rf, qr);
+    p = reserve_new_row_space(t, calc_serialized_row_len(rf, qr), &dir_num);
+    return write_row_to_page(p, dir_num, rf, qr);
 }
 
 QueryResultVal* get_col_val(Page* p, int dir_num, RowFmt* rf, char* col_name)
 {
     int col_num, dynamic_col_num, len, offset;
-    void* col;
+    void *col, *row;
     ColFmt cf;
     QueryResultVal* qrv;
-    void* row;
     qrv = smalloc(sizeof(QueryResultVal));
     col_num = get_col_num_by_col_name(rf, col_name);
     row = row_real_pos(p, dir_num);

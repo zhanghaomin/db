@@ -8,6 +8,8 @@
 #include <unistd.h>
 
 static int get_where_expr_res(Table* t, Page* p, int dir_num, Ast* where_expr);
+static QueryResultVal* get_expr_res(Table* t, Page* p, int dir_num, Ast* expr);
+static QueryResultVal* av_to_qrv(Ast* a);
 
 void destory_query_result_list(QueryResultList* qrl, int qrl_len, int qr_len)
 {
@@ -72,22 +74,6 @@ int get_col_num_by_col_name(RowFmt* rf, char* col_name)
     }
 
     return -1;
-}
-
-static inline void copy_ast_val(void* dest, AstVal* a)
-{
-    int i;
-    double d;
-
-    if (GET_AV_TYPE(a) == AVT_INT) {
-        i = GET_AV_INT(a);
-        memcpy(dest, &i, GET_AV_LEN(a));
-    } else if (GET_AV_TYPE(a) == AVT_DOUBLE) {
-        d = GET_AV_DOUBLE(a);
-        memcpy(dest, &d, GET_AV_LEN(a));
-    } else {
-        memcpy(dest, GET_AV_STR(a), GET_AV_LEN(a));
-    }
 }
 
 inline int get_query_result_val_len(QueryResultVal* qrv)
@@ -250,71 +236,8 @@ void destory_query_result_val(QueryResultVal* qrv)
 
 static int add_row_to_table(Table* t, QueryResult* qr)
 {
-    int dir_num;
-    Page* p;
-    p = reserve_new_row_space(t, calc_serialized_row_len(t->row_fmt, qr), &dir_num);
-    serialize_row(p, dir_num, t->row_fmt, qr);
     t->row_count++;
-    return 0;
-}
-
-// TODO: 类型转化移到serialize_row中
-static QueryResultVal* parse_insert_row_val(ColFmt* cf, Ast* a)
-{
-    AstVal* av;
-    assert(a->kind == AST_VAL);
-    int i;
-    double d;
-
-    av = (AstVal*)a;
-    QueryResultVal* qrv;
-    qrv = smalloc(sizeof(QueryResultVal));
-    qrv->type = cf->type;
-
-    if (GET_AV_TYPE(a) == AVT_STR) {
-        if (cf->type == C_CHAR || cf->type == C_VARCHAR) {
-            qrv->data = strdup(GET_AV_STR(a));
-        } else if (cf->type == C_INT) {
-            i = atoi(GET_AV_STR(a));
-            qrv->data = smalloc(sizeof(int));
-            memcpy(qrv->data, &i, sizeof(int));
-        } else {
-            // double
-            d = atoi(GET_AV_STR(a));
-            qrv->data = smalloc(sizeof(double));
-            memcpy(qrv->data, &d, sizeof(double));
-        }
-    } else if (GET_AV_TYPE(a) == AVT_INT) {
-        if (cf->type == C_CHAR || cf->type == C_VARCHAR) {
-            qrv->data = strdup(""); // TODO
-        } else if (cf->type == C_INT) {
-            i = GET_AV_INT(a);
-            qrv->data = smalloc(sizeof(int));
-            memcpy(qrv->data, &i, sizeof(int));
-        } else {
-            // double
-            qrv->data = smalloc(sizeof(double));
-            d = (double)GET_AV_INT(a);
-            memcpy(qrv->data, &d, sizeof(double));
-        }
-    } else if (GET_AV_TYPE(a) == AVT_DOUBLE) {
-        if (cf->type == C_CHAR || cf->type == C_VARCHAR) {
-            qrv->data = strdup(""); // TODO
-        } else if (cf->type == C_INT) {
-            qrv->data = smalloc(sizeof(int));
-            i = (int)GET_AV_DOUBLE(a);
-            memcpy(qrv->data, &i, sizeof(int));
-        } else {
-            // double
-            qrv->data = smalloc(sizeof(double));
-            d = GET_AV_DOUBLE(a);
-            memcpy(qrv->data, &d, sizeof(double));
-        }
-    } else {
-        return NULL;
-    }
-
-    return qrv;
+    return serialize_row(t, t->row_fmt, qr);
 }
 
 static QueryResult* parse_insert_row(RowFmt* rf, Ast* a)
@@ -326,7 +249,7 @@ static QueryResult* parse_insert_row(RowFmt* rf, Ast* a)
     qr = smalloc(sizeof(QueryResultVal*) * rf->origin_cols_count);
 
     for (int i = 0; i < rf->origin_cols_count; i++) {
-        qr[i] = parse_insert_row_val(&rf->cols_fmt[i], a->child[i]);
+        qr[i] = av_to_qrv(a->child[i]);
     }
 
     return qr;
@@ -361,9 +284,8 @@ int insert_row(DB* d, Ast* a)
         }
 
         qr = parse_insert_row(t->row_fmt, val_list);
-        add_row_to_table(t, qr);
+        res += add_row_to_table(t, qr);
         destory_query_result(qr, t->row_fmt->origin_cols_count);
-        res++;
     }
 
     return res;
@@ -387,188 +309,270 @@ static int qrv_to_bool(QueryResultVal* qrv)
     return i != 0;
 }
 
-QueryResultVal* get_real_val_by_op(Table* t, Page* p, int dir_num, Ast* op)
+static int qrv_to_int(QueryResultVal* qrv)
 {
-    QueryResultVal* qrv;
-    int where_res = 0;
+    int i;
+    double d;
 
-    assert(op->kind == AST_VAL || op->kind == AST_EXP);
-
-    if (op->kind == AST_VAL) {
-        if (GET_AV_TYPE(op) == AVT_ID) {
-            qrv = get_col_val(p, dir_num, t->row_fmt, GET_AV_STR(op));
-        } else if (GET_AV_TYPE(op) == AVT_DOUBLE) {
-            qrv = smalloc(sizeof(QueryResultVal));
-            qrv->type = C_DOUBLE;
-            qrv->data = smalloc(sizeof(double));
-            copy_ast_val(qrv->data, (AstVal*)op);
-        } else if (GET_AV_TYPE(op) == AVT_INT) {
-            qrv = smalloc(sizeof(QueryResultVal));
-            qrv->type = C_INT;
-            qrv->data = smalloc(sizeof(int));
-            copy_ast_val(qrv->data, (AstVal*)op);
-        } else {
-            // AVT_STR
-            qrv = smalloc(sizeof(QueryResultVal));
-            qrv->type = C_CHAR;
-            qrv->data = smalloc(GET_AV_LEN(op));
-            copy_ast_val(qrv->data, (AstVal*)op);
-        }
-    } else if (op->kind == AST_EXP) {
-        qrv = smalloc(sizeof(QueryResultVal));
-        qrv->type = C_INT;
-        qrv->data = smalloc(sizeof(int));
-        where_res = get_where_expr_res(t, p, dir_num, op);
-        memcpy(qrv->data, &where_res, sizeof(int));
-    } else {
-        return NULL;
+    if (qrv->type == C_INT) {
+        memcpy(&i, qrv->data, sizeof(int));
+        return i;
+    } else if (qrv->type == C_DOUBLE) {
+        memcpy(&d, qrv->data, sizeof(double));
+        return (int)d;
     }
 
+    // char varchar
+    i = atoi(qrv->data);
+    return i;
+}
+
+static double qrv_to_double(QueryResultVal* qrv)
+{
+    int i;
+    double d;
+
+    if (qrv->type == C_INT) {
+        memcpy(&i, qrv->data, sizeof(int));
+        return (double)i;
+    } else if (qrv->type == C_DOUBLE) {
+        memcpy(&d, qrv->data, sizeof(double));
+        return d;
+    }
+
+    // char varchar
+    d = atof(qrv->data);
+    return d;
+}
+
+static QueryResultVal* do_compare_int(int op1, int op2, ExprOp op)
+{
+    QueryResultVal* qrv;
+    int res = 0;
+
+    if (op == E_EQ) {
+        res = op1 == op2;
+    } else if (op == E_GT) {
+        res = op1 > op2;
+    } else if (op == E_GTE) {
+        res = op1 >= op2;
+    } else if (op == E_LT) {
+        res = op1 < op2;
+    } else if (op == E_LTE) {
+        res = op1 <= op2;
+    } else if (op == E_NEQ) {
+        res = op1 != op2;
+    }
+
+    qrv = smalloc(sizeof(QueryResultVal));
+    qrv->type = C_INT;
+    qrv->data = smalloc(sizeof(int));
+    memcpy(qrv->data, &res, sizeof(int));
     return qrv;
 }
 
-static int do_compare_int(int op1, int op2, ExprOp op)
+static QueryResultVal* do_compare_double(double op1, double op2, ExprOp op)
 {
+    QueryResultVal* qrv;
+    int res = 0;
+
     if (op == E_EQ) {
-        return op1 == op2;
+        res = op1 == op2;
     } else if (op == E_GT) {
-        return op1 > op2;
+        res = op1 > op2;
     } else if (op == E_GTE) {
-        return op1 >= op2;
+        res = op1 >= op2;
     } else if (op == E_LT) {
-        return op1 < op2;
+        res = op1 < op2;
     } else if (op == E_LTE) {
-        return op1 <= op2;
+        res = op1 <= op2;
     } else if (op == E_NEQ) {
-        return op1 != op2;
+        res = op1 != op2;
     }
 
-    return 0;
+    qrv = smalloc(sizeof(QueryResultVal));
+    qrv->type = C_INT;
+    qrv->data = smalloc(sizeof(int));
+    memcpy(qrv->data, &res, sizeof(int));
+    return qrv;
 }
 
-static int do_compare_double(double op1, double op2, ExprOp op)
+static QueryResultVal* do_compare_str(char* op1, char* op2, ExprOp op)
 {
-    if (op == E_EQ) {
-        return op1 == op2;
-    } else if (op == E_GT) {
-        return op1 > op2;
-    } else if (op == E_GTE) {
-        return op1 >= op2;
-    } else if (op == E_LT) {
-        return op1 < op2;
-    } else if (op == E_LTE) {
-        return op1 <= op2;
-    } else if (op == E_NEQ) {
-        return op1 != op2;
-    }
-
-    return 0;
-}
-
-static int do_compare_str(char* op1, char* op2, ExprOp op)
-{
-    int res;
+    QueryResultVal* qrv;
+    int res = 0;
     res = strcmp(op1, op2);
     if (op == E_EQ) {
-        return res == 0;
+        res = res == 0;
     } else if (op == E_GT) {
-        return res > 0;
+        res = res > 0;
     } else if (op == E_GTE) {
-        return res >= 0;
+        res = res >= 0;
     } else if (op == E_LT) {
-        return res < 0;
+        res = res < 0;
     } else if (op == E_LTE) {
-        return res <= 0;
+        res = res <= 0;
     } else if (op == E_NEQ) {
-        return res != 0;
+        res = res != 0;
     }
 
-    return 0;
+    qrv = smalloc(sizeof(QueryResultVal));
+    qrv->type = C_INT;
+    qrv->data = smalloc(sizeof(int));
+    memcpy(qrv->data, &res, sizeof(int));
+    return qrv;
 }
 
-int do_bool_op(int op1, int op2, ExprOp op)
+static QueryResultVal* do_bool(int op1, int op2, ExprOp op)
 {
+    QueryResultVal* qrv;
+    int res = 0;
+
     if (op == E_AND) {
-        return op1 && op2;
+        res = op1 && op2;
     } else if (op == E_OR) {
-        return op1 || op2;
+        res = op1 || op2;
     } else if (op == E_NOT) {
-        return !op1;
+        res = !op1;
     }
 
-    return 0;
+    qrv = smalloc(sizeof(QueryResultVal));
+    qrv->type = C_INT;
+    qrv->data = smalloc(sizeof(int));
+    memcpy(qrv->data, &res, sizeof(int));
+    return qrv;
 }
 
-int cmd_bool(Table* t, Page* p, int dir_num, Ast* op1, Ast* op2, ExprOp op)
+static QueryResultVal* do_calc_int(int op1, int op2, ExprOp op)
 {
-    QueryResultVal *op1_qrv, *op2_qrv;
-    int res;
+    QueryResultVal* qrv;
+    int res = 0;
 
-    op1_qrv = get_real_val_by_op(t, p, dir_num, op1);
+    if (op == E_MOD) {
+        res = op1 % op2;
+    } else if (op == E_MUL) {
+        res = op1 * op2;
+    } else if (op == E_SUB) {
+        res = op1 - op2;
+    } else if (op == E_ADD) {
+        res = op1 + op2;
+    } else if (op == E_DIV) {
+        if (op2 == 0) {
+            printf("divide by 0");
+            res = 0;
+        } else {
+            res = op1 / op2;
+        }
+    } else if (op == E_B_AND) {
+        res = op1 & op2;
+    } else if (op == E_B_OR) {
+        res = op1 | op2;
+    } else if (op == E_B_NOT) {
+        res = ~op1;
+    } else if (op == E_B_XOR) {
+        res = op1 ^ op2;
+    }
+
+    qrv = smalloc(sizeof(QueryResultVal));
+    qrv->type = C_INT;
+    qrv->data = smalloc(sizeof(int));
+    memcpy(qrv->data, &res, sizeof(int));
+    return qrv;
+}
+
+static QueryResultVal* do_calc_double(double op1, double op2, ExprOp op)
+{
+    QueryResultVal* qrv;
+    double res = 0;
+
+    if (op == E_MUL) {
+        res = op1 * op2;
+    } else if (op == E_SUB) {
+        res = op1 - op2;
+    } else if (op == E_ADD) {
+        res = op1 + op2;
+    } else if (op == E_DIV) {
+        if (op2 == 0) {
+            printf("divide by 0");
+            res = 0;
+        } else {
+            res = op1 / op2;
+        }
+    }
+
+    qrv = smalloc(sizeof(QueryResultVal));
+    qrv->type = C_INT;
+    qrv->data = smalloc(sizeof(int));
+    memcpy(qrv->data, &res, sizeof(int));
+    return qrv;
+}
+
+static QueryResultVal* cmd_bool(Table* t, Page* p, int dir_num, Ast* op1, Ast* op2, ExprOp op)
+{
+    QueryResultVal *op1_qrv, *op2_qrv, *res_qrv;
+
+    op1_qrv = get_expr_res(t, p, dir_num, op1);
 
     if (op != E_NOT) {
-        op2_qrv = get_real_val_by_op(t, p, dir_num, op2);
-        res = do_bool_op(qrv_to_bool(op1_qrv), qrv_to_bool(op2_qrv), op);
+        op2_qrv = get_expr_res(t, p, dir_num, op2);
+        res_qrv = do_bool(qrv_to_bool(op1_qrv), qrv_to_bool(op2_qrv), op);
         destory_query_result_val(op1_qrv);
         destory_query_result_val(op2_qrv);
     } else {
-        res = do_bool_op(qrv_to_bool(op1_qrv), 0, op);
+        res_qrv = do_bool(qrv_to_bool(op1_qrv), 0, op);
         destory_query_result_val(op1_qrv);
     }
 
-    return res;
+    return res_qrv;
 }
 
-// 如果一个是字符串，一个是数字，那么都转成数字比较
-int cmd_compare(Table* t, Page* p, int dir_num, Ast* op1, Ast* op2, ExprOp op)
+static QueryResultVal* cmd_cacl(Table* t, Page* p, int dir_num, Ast* op1, Ast* op2, ExprOp op)
 {
-    int res, i1, i2;
-    double d1, d2;
-    QueryResultVal *op1_qrv, *op2_qrv;
+    QueryResultVal *op1_qrv, *op2_qrv, *res_qrv;
 
-    op1_qrv = get_real_val_by_op(t, p, dir_num, op1);
-    op2_qrv = get_real_val_by_op(t, p, dir_num, op2);
+    op1_qrv = get_expr_res(t, p, dir_num, op1);
 
-    if (op1_qrv->type == C_INT) {
-        memcpy(&i1, op1_qrv->data, sizeof(int));
-        if (op2_qrv->type == C_INT) {
-            memcpy(&i2, op2_qrv->data, sizeof(int));
-            res = do_compare_int(i1, i2, op);
-        } else if (op2_qrv->type == C_DOUBLE) {
-            memcpy(&d2, op2_qrv->data, sizeof(double));
-            res = do_compare_double((double)i1, d2, op);
-        } else {
-            i2 = atoi(op2_qrv->data);
-            res = do_compare_int(i1, i2, op);
-        }
-    } else if (op1_qrv->type == C_DOUBLE) {
-        memcpy(&d1, op1_qrv->data, sizeof(double));
-        if (op2_qrv->type == C_INT) {
-            memcpy(&i2, op2_qrv->data, sizeof(int));
-            res = do_compare_double(d1, (double)i2, op);
-        } else if (op2_qrv->type == C_DOUBLE) {
-            memcpy(&d2, op2_qrv->data, sizeof(double));
-            res = do_compare_double(d1, d2, op);
-        } else {
-            d2 = atof(op2_qrv->data);
-            res = do_compare_double(d1, d2, op);
-        }
+    if (op == E_B_NOT) {
+        destory_query_result_val(op1_qrv);
+        return do_calc_int(qrv_to_int(op1_qrv), 0, op);
+    }
+
+    op2_qrv = get_expr_res(t, p, dir_num, op2);
+
+    if (op == E_B_AND || op == E_B_OR || op == E_B_XOR) {
+        res_qrv = do_calc_int(qrv_to_int(op1_qrv), qrv_to_int(op2_qrv), op);
     } else {
-        // char varchar
-        if (op2_qrv->type == C_INT) {
-            memcpy(&i2, op2_qrv->data, sizeof(int));
-            res = do_compare_int(atoi(op1_qrv->data), i2, op);
-        } else if (op2_qrv->type == C_DOUBLE) {
-            memcpy(&d2, op2_qrv->data, sizeof(double));
-            res = do_compare_double(atof(op1_qrv->data), d2, op);
+        if (op1_qrv->type == C_DOUBLE || op2_qrv->type == C_DOUBLE) {
+            res_qrv = do_calc_double(qrv_to_double(op1_qrv), qrv_to_double(op2_qrv), op);
         } else {
-            res = do_compare_str(op1_qrv->data, op2_qrv->data, op);
+            res_qrv = do_calc_int(qrv_to_int(op1_qrv), qrv_to_int(op2_qrv), op);
         }
     }
 
     destory_query_result_val(op1_qrv);
     destory_query_result_val(op2_qrv);
-    return res;
+    return res_qrv;
+}
+
+// 如果一个是字符串，一个是数字，那么都转成数字比较
+static QueryResultVal* cmd_compare(Table* t, Page* p, int dir_num, Ast* op1, Ast* op2, ExprOp op)
+{
+    QueryResultVal *op1_qrv, *op2_qrv, *res_qrv;
+
+    op1_qrv = get_expr_res(t, p, dir_num, op1);
+    op2_qrv = get_expr_res(t, p, dir_num, op2);
+
+    if (op1_qrv->type == C_DOUBLE || op2_qrv->type == C_DOUBLE) {
+        res_qrv = do_compare_double(qrv_to_double(op1_qrv), qrv_to_double(op2_qrv), op);
+    } else if (op1_qrv->type == C_INT || op2_qrv->type == C_INT) {
+        res_qrv = do_compare_int(qrv_to_int(op1_qrv), qrv_to_int(op2_qrv), op);
+    } else {
+        res_qrv = do_compare_str(op1_qrv->data, op2_qrv->data, op);
+    }
+
+    destory_query_result_val(op1_qrv);
+    destory_query_result_val(op2_qrv);
+    return res_qrv;
 }
 
 inline int get_table_row_cnt(Table* t)
@@ -576,42 +580,84 @@ inline int get_table_row_cnt(Table* t)
     return t->row_count;
 }
 
+static QueryResultVal* av_to_qrv(Ast* a)
+{
+    assert(a->kind == AST_VAL && GET_AV_TYPE(a) != AVT_ID);
+
+    int i;
+    double d;
+    QueryResultVal* qrv;
+
+    if (GET_AV_TYPE(a) == AVT_DOUBLE) {
+        qrv = smalloc(sizeof(QueryResultVal));
+        qrv->type = C_DOUBLE;
+        qrv->data = smalloc(sizeof(double));
+        d = GET_AV_DOUBLE(a);
+        memcpy(qrv->data, &d, GET_AV_LEN(a));
+    } else if (GET_AV_TYPE(a) == AVT_INT) {
+        qrv = smalloc(sizeof(QueryResultVal));
+        qrv->type = C_INT;
+        qrv->data = smalloc(sizeof(int));
+        i = GET_AV_INT(a);
+        memcpy(qrv->data, &i, GET_AV_LEN(a));
+    } else {
+        // AVT_STR
+        qrv = smalloc(sizeof(QueryResultVal));
+        qrv->type = C_CHAR;
+        qrv->data = smalloc(GET_AV_LEN(a));
+        memcpy(qrv->data, GET_AV_STR(a), GET_AV_LEN(a));
+    }
+
+    return qrv;
+}
+
 static QueryResultVal* get_expr_res(Table* t, Page* p, int dir_num, Ast* expr)
 {
     assert(expr->kind == AST_EXP || expr->kind == AST_VAL);
-    // TODO: 计算表达式的值
-    return NULL;
-}
-
-static int get_where_expr_res(Table* t, Page* p, int dir_num, Ast* where_expr)
-{
-    assert(where_expr->kind == AST_EXP || where_expr->kind == AST_VAL);
 
     Ast *op1, *op2;
     ExprOp op;
     QueryResultVal* qrv;
-    int res = 0;
 
-    if (where_expr->kind == AST_VAL) {
-        qrv = get_real_val_by_op(t, p, dir_num, where_expr);
-        res = qrv_to_bool(qrv);
-        destory_query_result_val(qrv);
-        return res;
+    op = expr->attr;
+
+    if (expr->kind == AST_VAL) {
+        if (GET_AV_TYPE(expr) == AVT_ID) {
+            qrv = get_col_val(p, dir_num, t->row_fmt, GET_AV_STR(expr));
+        } else {
+            qrv = av_to_qrv(expr);
+        }
+
+        return qrv;
     }
 
-    op1 = where_expr->child[0];
-    op2 = where_expr->child[1];
-    op = where_expr->attr;
+    op1 = expr->child[0];
+    op2 = expr->child[1];
 
     if (op == E_EQ || op == E_NEQ || op == E_GT || op == E_GTE || op == E_LT || op == E_LTE) {
         return cmd_compare(t, p, dir_num, op1, op2, op);
-    }
-
-    if (op == E_NOT || op == E_OR || op == E_AND) {
+    } else if (op == E_NOT || op == E_OR || op == E_AND) {
         return cmd_bool(t, p, dir_num, op1, op2, op);
     }
 
-    return 0;
+    return cmd_cacl(t, p, dir_num, op1, op2, op);
+}
+
+static int get_where_expr_res(Table* t, Page* p, int dir_num, Ast* where_expr)
+{
+    assert(where_expr == NULL || where_expr->kind == AST_WHERE_EXP);
+
+    int res;
+    QueryResultVal* res_qrv;
+
+    if (where_expr == NULL) {
+        return 1;
+    }
+
+    res_qrv = get_expr_res(t, p, dir_num, where_expr->child[0]);
+    res = qrv_to_bool(res_qrv);
+    destory_query_result_val(res_qrv);
+    return res;
 }
 
 QueryResult* get_table_row(Table* t, Page* p, int dir_num, int* col_cnt)
@@ -639,28 +685,12 @@ QueryResult* filter_row(Table* t, Cursor* c, Ast* expect_cols, Ast* where_top_ex
     int table_row_count = 0;
 
     while (!cursor_is_end(c)) {
-        if (!cursor_value_is_deleted(c) && (where_top_expr == NULL || get_where_expr_res(t, cursor_page(c), cursor_dir_num(c), where_top_expr->child[0]) == 1)) {
+        if (!cursor_value_is_deleted(c) && get_where_expr_res(t, cursor_page(c), cursor_dir_num(c), where_top_expr)) {
             qr = smalloc(expect_cols->children * sizeof(QueryResultVal*));
             // 符合条件,返回这条数据
             for (int i = 0; i < expect_cols->children; i++) {
-                if (GET_AV_TYPE(expect_cols->child[i]) == AVT_STR) {
-                    qrv = smalloc(sizeof(QueryResultVal));
-                    // 直接返回这个字符串
-                    qrv->type = C_CHAR;
-                    qrv->data = strdup(GET_AV_STR(expect_cols->child[i]));
-                    qr[col_cnt++] = qrv;
-                } else if (GET_AV_TYPE(expect_cols->child[i]) == AVT_DOUBLE) {
-                    qrv = smalloc(sizeof(QueryResultVal));
-                    qrv->type = C_DOUBLE;
-                    qrv->data = smalloc(sizeof(double));
-                    copy_ast_val(qrv->data, (AstVal*)(expect_cols->child[i]));
-                    qr[col_cnt++] = qrv;
-                } else if (GET_AV_TYPE(expect_cols->child[i]) == AVT_INT) {
-                    qrv = smalloc(sizeof(QueryResultVal));
-                    qrv->type = C_INT;
-                    qrv->data = smalloc(sizeof(int));
-                    copy_ast_val(qrv->data, (AstVal*)(expect_cols->child[i]));
-                    qr[col_cnt++] = qrv;
+                if (GET_AV_TYPE(expect_cols->child[i]) != AVT_ID) {
+                    qr[col_cnt++] = av_to_qrv(expect_cols->child[i]);
                 } else {
                     if (strcmp(GET_AV_STR(expect_cols->child[i]), "*") == 0) {
                         full_row = get_table_row(t, cursor_page(c), cursor_dir_num(c), &table_row_count);
@@ -669,6 +699,8 @@ QueryResult* filter_row(Table* t, Cursor* c, Ast* expect_cols, Ast* where_top_ex
                             qr = realloc(qr, ++col_cnt * sizeof(QueryResultVal*));
                             qr[col_cnt - 1] = full_row[i];
                         }
+
+                        free(full_row);
                     } else {
                         qrv = get_col_val(cursor_page(c), cursor_dir_num(c), t->row_fmt, GET_AV_STR(expect_cols->child[i]));
                         qr[col_cnt++] = qrv;
@@ -831,7 +863,7 @@ int delete_row(DB* d, Ast* delete_ast)
     c = cursor_init(t);
 
     while (!cursor_is_end(c)) {
-        if (!cursor_value_is_deleted(c) && (where_top_list == NULL || get_where_expr_res(t, cursor_page(c), cursor_dir_num(c), where_top_list->child[0]) == 1)) {
+        if (!cursor_value_is_deleted(c) && get_where_expr_res(t, cursor_page(c), cursor_dir_num(c), where_top_list)) {
             remove_row_from_table(t, c->page, c->page_dir_num);
             deleted_row_count++;
         }
@@ -856,15 +888,15 @@ static int check_set_list_valid(Table* t, Ast* set_list)
     return 1;
 }
 
-static void update_row(Table* t, Page* p, int dir_num, Ast* set_list)
+static int update_row(Table* t, Page* p, int dir_num, Ast* set_list)
 {
     assert(set_list->kind == AST_UPDATE_SET_LIST);
 
     // 获取原来的数据
     QueryResult* qr;
-    QueryResultVal *val, *origin;
+    QueryResultVal* origin;
     Ast *col_name, *expr;
-    int row_cnt, col_num;
+    int row_cnt, col_num, res;
 
     qr = get_table_row(t, p, dir_num, &row_cnt);
 
@@ -872,14 +904,15 @@ static void update_row(Table* t, Page* p, int dir_num, Ast* set_list)
         col_name = set_list->child[i]->child[0];
         expr = set_list->child[i]->child[1];
 
-        val = get_expr_res(t, p, dir_num, expr);
         col_num = get_col_num_by_col_name(t->row_fmt, GET_AV_STR(col_name));
         origin = qr[col_num];
-        qr[col_num] = val;
+        qr[col_num] = get_expr_res(t, p, dir_num, expr);
         destory_query_result_val(origin);
     }
-    // TODO: 替换原有数据, 计算剩余空间是否足够, 足够则移动后续元素, 不够则删除原有元素, 并新增
-    // destory_query_result(qr, row_cnt);
+    // 替换原有数据
+    res = replace_row(t, p, dir_num, t->row_fmt, qr);
+    destory_query_result(qr, row_cnt);
+    return res;
 }
 
 int update_table(DB* d, Ast* update)
@@ -911,9 +944,8 @@ int update_table(DB* d, Ast* update)
     c = cursor_init(t);
 
     while (!cursor_is_end(c)) {
-        if (!cursor_value_is_deleted(c) && (where == NULL || get_where_expr_res(t, cursor_page(c), cursor_dir_num(c), where->child[0]) == 1)) {
-            update_row(t, cursor_page(c), cursor_dir_num(c), set_list);
-            updated_row_count++;
+        if (!cursor_value_is_deleted(c) && get_where_expr_res(t, cursor_page(c), cursor_dir_num(c), where)) {
+            updated_row_count += update_row(t, cursor_page(c), cursor_dir_num(c), set_list);
         }
         cursor_next(c);
     }

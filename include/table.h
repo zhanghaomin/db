@@ -109,12 +109,13 @@ void set_dir_info(Page* p, int dir_num, int is_delete, int row_offset);
 void get_dir_info(Page* p, int dir_num, int* is_delete, int* row_offset);
 Page* get_page(Table* t, int page_num);
 Page* reserve_new_row_space(Table* t, int size, int* dir_num);
+Page* resize_row_space(Table* t, Page* old_page, int* dir_num, int size);
 
 void set_row_deleted(Page* p, int dir_num);
 int get_row_len(Page* p, int dir_num);
 int row_is_delete(Page* p, int dir_num);
-int calc_serialized_row_len(RowFmt* rf, QueryResult* qr);
-int serialize_row(Page* p, int dir_num, RowFmt* rf, QueryResult* qr);
+int serialize_row(Table* t, RowFmt* rf, QueryResult* qr);
+int replace_row(Table* t, Page* p, int dir_num, RowFmt* rf, QueryResult* qr);
 QueryResultVal* get_col_val(Page* p, int dir_num, RowFmt* rf, char* col_name);
 
 #endif

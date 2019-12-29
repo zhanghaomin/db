@@ -14,6 +14,9 @@ Page* get_page(Table* t, int page_num)
             new_page->header.dir_cnt = 0;
             t->max_page_num = page_num;
         } else { // 旧数据
+            if (lseek(t->data_fd, PAGE_SIZE * page_num, SEEK_SET) == -1) {
+                return NULL;
+            }
             read(t->data_fd, new_page, PAGE_SIZE);
         }
     }
@@ -64,6 +67,13 @@ inline void set_dir_info(Page* p, int dir_num, int is_delete, int row_offset)
     memcpy(p->data + get_sizeof_dir() * (dir_num) + sizeof(int), &row_offset, sizeof(int));
 }
 
+static inline int get_row_offset(Page* p, int dir_num)
+{
+    int offset;
+    get_dir_info(p, dir_num, NULL, &offset);
+    return offset;
+}
+
 inline void get_dir_info(Page* p, int dir_num, int* is_delete, int* row_offset)
 {
     if (is_delete != NULL) {
@@ -108,4 +118,40 @@ Page* reserve_new_row_space(Table* t, int size, int* dir_num)
     // never happen
     printf("page no space\n");
     exit(-1);
+}
+
+// 计算剩余空间是否足够, 足够则移动后续元素, 不够则删除原有元素, 并新增
+Page* resize_row_space(Table* t, Page* old_page, int* dir_num, int size)
+{
+    int old_size, free_space, move_start_offset, move_end_offset, move_size, origin_offset, origin_is_delete;
+    void *move_src, *move_dest;
+
+    old_size = get_row_len(old_page, *dir_num);
+    free_space = t->free_map[get_page_num(old_page)];
+
+    if (free_space < size - old_size) { // 当前页空间不足
+        // 删除原有元素, 并新增
+        set_row_deleted(old_page, *dir_num);
+        return reserve_new_row_space(t, size, dir_num);
+    }
+
+    // 移动
+    if (size != old_size) {
+        // 需要移动之后插入的元素
+        move_start_offset = get_row_offset(old_page, get_last_page_dir_num(old_page));
+        move_end_offset = get_row_offset(old_page, *dir_num);
+        move_size = move_end_offset - move_start_offset;
+        move_src = (void*)old_page->data + move_start_offset;
+        move_dest = move_src - (size - old_size);
+        memmove(move_dest, (void*)old_page->data + move_start_offset, move_size);
+
+        // 从当前dir开始, 每个减size - old_size
+        for (int i = *dir_num; i < get_page_dir_cnt(old_page); i++) {
+            get_dir_info(old_page, i, &origin_is_delete, &origin_offset);
+            origin_offset -= (size - old_size);
+            set_dir_info(old_page, i, origin_is_delete, origin_offset);
+        }
+    }
+
+    return old_page;
 }
