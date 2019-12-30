@@ -10,6 +10,7 @@
 static int get_where_expr_res(Table* t, Page* p, int dir_num, Ast* where_expr);
 static QueryResultVal* get_expr_res(Table* t, Page* p, int dir_num, Ast* expr);
 static QueryResultVal* av_to_qrv(Ast* a);
+int lex_read(char* s, int len);
 
 void destory_query_result_list(QueryResultList* qrl, int qrl_len, int qr_len)
 {
@@ -787,7 +788,7 @@ int check_where_ast_valid(Table* t, Ast* where_expr)
     return check_where_ast_valid(t, where_expr->child[0]) && check_where_ast_valid(t, where_expr->child[1]);
 }
 
-QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_count)
+QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_count, int with_header)
 {
     assert(select_ast->kind == AST_SELECT);
 
@@ -830,8 +831,10 @@ QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_cou
         lmt = GET_AV_INT(limit->child[1]);
     }
 
-    qrl = realloc(qrl, (++(*row_count)) * sizeof(QueryResult*));
-    qrl[(*row_count) - 1] = get_select_header(t, expect_cols);
+    if (with_header) {
+        qrl = realloc(qrl, (++(*row_count)) * sizeof(QueryResult*));
+        qrl[(*row_count) - 1] = get_select_header(t, expect_cols);
+    }
 
     while ((qr = filter_row(t, c, expect_cols, where_top_list)) != NULL) {
         if (offset-- > 0) {
@@ -1081,6 +1084,17 @@ static void parse_fmt_list(Ast* a, RowFmt* rf)
     }
 }
 
+QueryResultList* execute_select_sql(DB* d, char* sql, int* row_cnt, int* col_cnt)
+{
+    QueryResultList* qrl;
+    assert(G_AST->kind == AST_SELECT);
+    lex_read(sql, strlen(sql));
+
+    qrl = select_row(d, G_AST, row_cnt, col_cnt, 0);
+    ast_destory(G_AST);
+    return qrl;
+}
+
 int create_table(DB* d, Ast* a)
 {
     assert(a->kind == AST_CREATE);
@@ -1091,6 +1105,10 @@ int create_table(DB* d, Ast* a)
 
     table_name = a->child[0]->child[0];
     fmt_list = a->child[1];
+
+    // 将格式插入sys_cols中，表名插入sys_tables
+    
+
     t = smalloc(sizeof(Table));
     t->name = strdup(GET_AV_STR(table_name));
 

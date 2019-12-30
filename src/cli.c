@@ -21,7 +21,7 @@ void do_cmd(DB* d, Ast* a)
         int field_count = 0;
         QueryResultList* qrl;
 
-        qrl = select_row(d, G_AST, &row_count, &field_count);
+        qrl = select_row(d, G_AST, &row_count, &field_count, 1);
         if (qrl != NULL) {
             println_rows(qrl, row_count, field_count);
             destory_query_result_list(qrl, row_count, field_count);
