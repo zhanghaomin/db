@@ -102,6 +102,7 @@ int cursor_value_is_deleted(Cursor* c);
 Page* cursor_page(Cursor* c);
 Cursor* cursor_init(Table* t);
 
+void init_pager(Table* t);
 void set_dir_info(Page* p, int dir_num, int is_delete, int row_offset);
 void get_dir_info(Page* p, int dir_num, int* is_delete, int* row_offset);
 int get_page_num(Page* p);

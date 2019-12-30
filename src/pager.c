@@ -1,6 +1,18 @@
 #include "include/table.h"
 #include <unistd.h>
 
+static int get_page_header_size();
+
+void init_pager(Table* t)
+{
+    t->pager = smalloc(sizeof(Pager));
+
+    for (int i = 0; i < MAX_PAGE_CNT_P_TABLE; i++) {
+        t->pager->pages[i] = NULL;
+        t->free_map[i] = PAGE_SIZE - get_page_header_size();
+    }
+}
+
 Page* get_page(Table* t, int page_num)
 {
     Page* new_page;
