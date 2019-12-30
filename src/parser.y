@@ -46,7 +46,7 @@ topstmt:
     ;
 
 update_stmt:
-      T_UPDATE table_name T_SET set_stmt where { $$ = create_ast(3, AST_UPDATE, -1, $2, $4, $5); }
+      T_UPDATE table_name T_SET set_stmt where limit { $$ = create_ast(4, AST_UPDATE, -1, $2, $4, $5, $6); }
     ;
 
 set_stmt:

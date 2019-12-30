@@ -937,14 +937,17 @@ static int update_row(Table* t, Page* p, int dir_num, Ast* set_list)
 int update_table(DB* d, Ast* update)
 {
     assert(update->kind == AST_UPDATE);
-    Ast *set_list, *table_name, *where;
+    Ast *set_list, *table_name, *where, *limit;
     Table* t;
     Cursor* c;
     int updated_row_count = 0;
+    int lmt = -1;
+    int offset = 0;
 
     table_name = update->child[0];
     set_list = update->child[1];
     where = update->child[2];
+    limit = update->child[3];
     t = open_table(d, GET_AV_STR(table_name->child[0]));
 
     if (t == NULL) {
@@ -960,11 +963,23 @@ int update_table(DB* d, Ast* update)
         return 0;
     }
 
+    if (limit != NULL) {
+        offset = GET_AV_INT(limit->child[0]);
+        lmt = GET_AV_INT(limit->child[1]);
+    }
+
     c = cursor_init(t);
 
     while (!cursor_is_end(c)) {
         if (!cursor_value_is_deleted(c) && get_where_expr_res(t, cursor_page(c), cursor_dir_num(c), where)) {
-            updated_row_count += update_row(t, cursor_page(c), cursor_dir_num(c), set_list);
+            if (offset-- <= 0) {
+                updated_row_count += update_row(t, cursor_page(c), cursor_dir_num(c), set_list);
+
+                if (--lmt == 0) {
+                    cursor_next(c);
+                    break;
+                }
+            }
         }
         cursor_next(c);
     }
