@@ -29,7 +29,7 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     t = open_table(d, "txzj_miniapp_white_list");
 
     lex_read_line(f, s, 4096);
-    qrl = select_row(d, G_AST, &row_count, &field_count);
+    qrl = select_row(d, G_AST, &row_count, &field_count, 1);
     assert(row_count == 2);
     ast_destory(G_AST);
     destory_query_result_list(qrl, row_count, field_count);
@@ -42,13 +42,13 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     ast_destory(G_AST);
 
     lex_read_line(f, s, 4096);
-    qrl = select_row(d, G_AST, &row_count, &field_count);
+    qrl = select_row(d, G_AST, &row_count, &field_count, 1);
     assert(row_count == 1);
     ast_destory(G_AST);
     destory_query_result_list(qrl, row_count, field_count);
 
     lex_read_line(f, s, 4096);
-    qrl = select_row(d, G_AST, &row_count, &field_count);
+    qrl = select_row(d, G_AST, &row_count, &field_count, 1);
     assert(row_count > 1);
     ast_destory(G_AST);
     destory_query_result_list(qrl, row_count, field_count);
@@ -60,7 +60,7 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     ast_destory(G_AST);
 
     lex_read_line(f, s, 4096);
-    qrl = select_row(d, G_AST, &row_count, &field_count);
+    qrl = select_row(d, G_AST, &row_count, &field_count, 1);
     assert(row_count == 1);
     ast_destory(G_AST);
     destory_query_result_list(qrl, row_count, field_count);

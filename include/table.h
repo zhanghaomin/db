@@ -81,7 +81,7 @@ int create_table(DB* d, Ast* a);
 int update_table(DB* d, Ast* update);
 DB* db_init();
 Table* open_table(DB* d, char* name);
-QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_count);
+QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_count, int with_header);
 
 void destory_query_result_list(QueryResultList* qrl, int qrl_len, int qr_len);
 int get_table_row_cnt(Table* t);
@@ -102,11 +102,11 @@ int cursor_value_is_deleted(Cursor* c);
 Page* cursor_page(Cursor* c);
 Cursor* cursor_init(Table* t);
 
+void set_dir_info(Page* p, int dir_num, int is_delete, int row_offset);
+void get_dir_info(Page* p, int dir_num, int* is_delete, int* row_offset);
 int get_page_num(Page* p);
 int get_page_dir_cnt(Page* p);
 int flush_page(Table* t, int page_num);
-void set_dir_info(Page* p, int dir_num, int is_delete, int row_offset);
-void get_dir_info(Page* p, int dir_num, int* is_delete, int* row_offset);
 Page* get_page(Table* t, int page_num);
 Page* reserve_new_row_space(Table* t, int size, int* dir_num);
 Page* resize_row_space(Table* t, Page* old_page, int* dir_num, int size);

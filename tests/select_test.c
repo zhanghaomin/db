@@ -29,7 +29,7 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     QueryResultList* qrl;
 
     lex_read_line(f, s, 4096);
-    qrl = select_row(d, G_AST, &row_count, &field_count);
+    qrl = select_row(d, G_AST, &row_count, &field_count, 1);
     assert(qrl != NULL);
     assert(row_count != 0);
     assert(field_count != 0);
@@ -38,7 +38,7 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     destory_query_result_list(qrl, row_count, field_count);
 
     lex_read_line(f, s, 4096);
-    qrl = select_row(d, G_AST, &row_count, &field_count);
+    qrl = select_row(d, G_AST, &row_count, &field_count, 1);
     println_rows(qrl, row_count, field_count);
     ast_destory(G_AST);
     destory_query_result_list(qrl, row_count, field_count);
