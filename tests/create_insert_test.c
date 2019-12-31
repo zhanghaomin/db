@@ -33,8 +33,8 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     assert_eq_str(t->name, "txzj_miniapp_white_list");
     assert(t->data_fd > 0);
     assert(access("t_txzj_miniapp_white_list.dat", 0) == 0);
-    assert(t->row_count == 0);
-    assert(t->max_page_num == 0);
+    assert(get_table_row_cnt(t) == 0);
+    assert(get_table_max_page_num(t) == 0);
 
     RowFmt* rf;
     rf = t->row_fmt;

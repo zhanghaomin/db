@@ -42,13 +42,9 @@ inline int cursor_value_is_deleted(Cursor* c)
 
 void cursor_next(Cursor* c)
 {
-    if (cursor_is_end(c)) {
-        return;
-    }
-
     c->page_dir_num++;
 
-    if (cursor_reach_page_end(c)) {
+    if (cursor_reach_page_end(c) && !cursor_is_end(c)) {
         c->page = get_page(c->table, get_page_num(cursor_page(c)) + 1);
         c->page_dir_num = 0;
     }

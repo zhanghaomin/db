@@ -61,8 +61,7 @@ typedef struct {
     int data_fd;
     RowFmt* row_fmt;
     Pager* pager;
-    int max_page_num; // 最大叶号
-    int row_count; // 表里数据总行数，不包括已删除的
+    DB* db;
     int free_map[MAX_PAGE_CNT_P_TABLE]; // 每页的空闲空间
 } Table;
 
@@ -89,6 +88,7 @@ int get_table_max_page_num(Table* t);
 int get_query_result_val_len(QueryResultVal* qrv);
 int get_col_num_by_col_name(RowFmt* rf, char* col_name);
 int get_dynamic_col_num_by_col_name(RowFmt* rf, char* col_name);
+int update_table_max_page_num(Table* t, int max_page_num);
 QueryResult* get_table_header(Table* t);
 
 void println_rows(QueryResultList* qrl, int qrl_len, int qr_len);
@@ -102,7 +102,7 @@ int cursor_value_is_deleted(Cursor* c);
 Page* cursor_page(Cursor* c);
 Cursor* cursor_init(Table* t);
 
-void init_pager(Table* t);
+void init_sys_table_pager(Table* t);
 void set_dir_info(Page* p, int dir_num, int is_delete, int row_offset);
 void get_dir_info(Page* p, int dir_num, int* is_delete, int* row_offset);
 int get_page_num(Page* p);

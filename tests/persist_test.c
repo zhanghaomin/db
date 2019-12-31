@@ -31,7 +31,7 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     assert_eq_str(t->name, "txzj_miniapp_white_list");
     assert(t->data_fd > 0);
     assert(access("t_txzj_miniapp_white_list.dat", 0) == 0);
-    assert(t->row_count == 27);
+    assert(get_table_row_cnt(t) == 27);
     RowFmt* rf;
     rf = t->row_fmt;
     // CREATE TABLE `txzj_miniapp_white_list` ( `id` int(11) , `shop_id` int(20), `nick` char(255) , `online_code` varchar(256), `create_time` int(20),  `update_time` int(20)  );

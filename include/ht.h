@@ -29,18 +29,22 @@ unsigned int ht_hash(char* key);
 void ht_release(HashTable* ht);
 int ht_delete(HashTable* ht, char* key);
 
-#define FOREACH_HT(ht, _k, _v)           \
-    Bucket* _c;                          \
-    char* _k UNUSED;                     \
-    void* _v UNUSED;                     \
-    for (int i = 0; i < ht->size; ++i) { \
-        _c = ht->data[i];                \
-        while (_c != NULL) {             \
-            _k = _c->key;                \
-            _v = _c->val;
+#define FOREACH_HT(ht, _k, _v)               \
+    do {                                     \
+        Bucket* _c;                          \
+        char* _k UNUSED;                     \
+        void* _v UNUSED;                     \
+        for (int i = 0; i < ht->size; ++i) { \
+            _c = ht->data[i];                \
+            while (_c != NULL) {             \
+                _k = _c->key;                \
+                _v = _c->val;
 
 #define ENDFOREACH() \
     _c = _c->next;   \
     }                \
-    }
+    }                \
+    }                \
+    while (0)        \
+        ;
 #endif

@@ -3,7 +3,7 @@
 
 static int get_page_header_size();
 
-void init_pager(Table* t)
+void init_sys_table_pager(Table* t)
 {
     t->pager = smalloc(sizeof(Pager));
 
@@ -11,6 +11,10 @@ void init_pager(Table* t)
         t->pager->pages[i] = NULL;
         t->free_map[i] = PAGE_SIZE - get_page_header_size();
     }
+
+    t->pager->pages[0] = scalloc(PAGE_SIZE, 1);
+    t->pager->pages[0]->header.page_num = 0;
+    t->pager->pages[0]->header.dir_cnt = 0;
 }
 
 Page* get_page(Table* t, int page_num)
@@ -21,10 +25,10 @@ Page* get_page(Table* t, int page_num)
         new_page = scalloc(PAGE_SIZE, 1);
         t->pager->pages[page_num] = new_page;
 
-        if (page_num > t->max_page_num) { // 新空间,不需要读磁盘
+        if (page_num > get_table_max_page_num(t)) { // 新空间,不需要读磁盘
             new_page->header.page_num = page_num;
             new_page->header.dir_cnt = 0;
-            t->max_page_num = page_num;
+            update_table_max_page_num(t, page_num);
         } else { // 旧数据
             if (lseek(t->data_fd, PAGE_SIZE * page_num, SEEK_SET) == -1) {
                 return NULL;
