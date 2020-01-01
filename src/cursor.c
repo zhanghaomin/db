@@ -32,7 +32,7 @@ static inline int cursor_reach_page_end(Cursor* c)
 
 inline int cursor_is_end(Cursor* c)
 {
-    return cursor_reach_page_end(c) && get_page_num(cursor_page(c)) == get_table_max_page_num(c->table);
+    return cursor_reach_page_end(c) && get_page_num(cursor_page(c)) == get_page_cnt(c->pager);
 }
 
 inline int cursor_value_is_deleted(Cursor* c)
@@ -45,7 +45,7 @@ void cursor_next(Cursor* c)
     c->page_dir_num++;
 
     if (cursor_reach_page_end(c) && !cursor_is_end(c)) {
-        c->page = get_page(c->table, get_page_num(cursor_page(c)) + 1);
+        c->page = get_page(c->pager, get_page_num(cursor_page(c)) + 1);
         c->page_dir_num = 0;
     }
 
@@ -54,6 +54,6 @@ void cursor_next(Cursor* c)
 
 void cursor_rewind(Cursor* c)
 {
-    c->page = get_page(c->table, 0);
+    c->page = get_page(c->pager, 0);
     c->page_dir_num = 0;
 }

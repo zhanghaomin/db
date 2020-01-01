@@ -49,6 +49,11 @@ typedef struct {
 } Page;
 
 typedef struct {
+    struct {
+        int page_cnt;
+    } header;
+    int data_fd;
+    int free_map[MAX_PAGE_CNT_P_TABLE]; // 每页的空闲空间
     Page* pages[MAX_PAGE_CNT_P_TABLE]; // 表里的page集合
 } Pager;
 
@@ -58,11 +63,9 @@ typedef struct {
 
 typedef struct {
     char* name;
-    int data_fd;
     RowFmt* row_fmt;
     Pager* pager;
     DB* db;
-    int free_map[MAX_PAGE_CNT_P_TABLE]; // 每页的空闲空间
 } Table;
 
 typedef struct {
@@ -84,11 +87,11 @@ QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_cou
 
 void destory_query_result_list(QueryResultList* qrl, int qrl_len, int qr_len);
 int get_table_row_cnt(Table* t);
-int get_table_max_page_num(Table* t);
 int get_query_result_val_len(QueryResultVal* qrv);
+int get_page_free_space_stored(Table* t, int page_num);
 int get_col_num_by_col_name(RowFmt* rf, char* col_name);
-int get_dynamic_col_num_by_col_name(RowFmt* rf, char* col_name);
 int update_table_max_page_num(Table* t, int max_page_num);
+int get_dynamic_col_num_by_col_name(RowFmt* rf, char* col_name);
 QueryResult* get_table_header(Table* t);
 
 void println_rows(QueryResultList* qrl, int qrl_len, int qr_len);
@@ -102,15 +105,18 @@ int cursor_value_is_deleted(Cursor* c);
 Page* cursor_page(Cursor* c);
 Cursor* cursor_init(Table* t);
 
-void init_sys_table_pager(Table* t);
+void init_pager_free_space(Table* t, Pager* pr);
 void set_dir_info(Page* p, int dir_num, int is_delete, int row_offset);
 void get_dir_info(Page* p, int dir_num, int* is_delete, int* row_offset);
 int get_page_num(Page* p);
+int get_page_cnt(Pager* pr);
 int get_page_dir_cnt(Page* p);
-int flush_page(Table* t, int page_num);
-Page* get_page(Table* t, int page_num);
-Page* reserve_new_row_space(Table* t, int size, int* dir_num);
-Page* resize_row_space(Table* t, Page* old_page, int* dir_num, int size);
+int flush_pager_header(Pager* pr);
+int flush_page(Pager* pr, int page_num);
+Pager* init_pager(int fd);
+Page* get_page(Pager* pr, int page_num);
+Page* reserve_new_row_space(Pager* pr, int size, int* dir_num);
+Page* resize_row_space(Pager* pr, Page* old_page, int* dir_num, int size);
 
 void set_row_deleted(Page* p, int dir_num);
 int get_row_len(Page* p, int dir_num);

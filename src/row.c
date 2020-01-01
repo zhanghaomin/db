@@ -102,7 +102,7 @@ static void translate_to_row_fmt(RowFmt* rf, QueryResult* qr)
 int replace_row(Table* t, Page* p, int dir_num, RowFmt* rf, QueryResult* qr)
 {
     translate_to_row_fmt(rf, qr);
-    p = resize_row_space(t, p, &dir_num, calc_serialized_row_len(rf, qr));
+    p = resize_row_space(t->pager, p, &dir_num, calc_serialized_row_len(rf, qr));
     return write_row_to_page(p, dir_num, rf, qr);
 }
 
@@ -172,7 +172,7 @@ int serialize_row(Table* t, RowFmt* rf, QueryResult* qr)
     int dir_num;
 
     translate_to_row_fmt(rf, qr);
-    p = reserve_new_row_space(t, calc_serialized_row_len(rf, qr), &dir_num);
+    p = reserve_new_row_space(t->pager, calc_serialized_row_len(rf, qr), &dir_num);
     return write_row_to_page(p, dir_num, rf, qr);
 }
 
