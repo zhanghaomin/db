@@ -30,27 +30,16 @@ Pager* init_pager(int fd)
     return pr;
 }
 
-void init_pager_free_space(Table* t, Pager* pr)
+int get_page_free_space(Table* t, Pager* pr, int page_num)
 {
-    off_t length;
-    length = lseek(pr->data_fd, 0, SEEK_END);
-
-    if (length > PAGE_SIZE) {
-        for (int i = 0; i < MAX_PAGE_CNT_P_TABLE; i++) {
-            if (i < pr->header.page_cnt) {
-                pr->free_map[i] = get_page_free_space_stored(t, i);
-            } else {
-                pr->free_map[i] = PAGE_SIZE - get_page_header_size();
-            }
-        }
+    if (page_num < pr->header.page_cnt) {
+        return get_page_free_space_stored(t, page_num);
     } else {
-        for (int i = 0; i < MAX_PAGE_CNT_P_TABLE; i++) {
-            pr->free_map[i] = PAGE_SIZE - get_page_header_size();
-        }
+        return PAGE_SIZE - get_page_header_size();
     }
 }
 
-Page* get_page(Pager* pr, int page_num)
+Page* get_page(Table* t, Pager* pr, int page_num)
 {
     Page* new_page;
 
@@ -58,10 +47,11 @@ Page* get_page(Pager* pr, int page_num)
         new_page = scalloc(PAGE_SIZE, 1);
         pr->pages[page_num] = new_page;
 
-        if (page_num > get_page_cnt(pr)) { // 新空间,不需要读磁盘
+        if (page_num >= get_page_cnt(pr)) { // 新空间,不需要读磁盘
             new_page->header.page_num = page_num;
             new_page->header.dir_cnt = 0;
-            set_page_cnt(pr, page_num);
+            set_page_cnt(pr, page_num + 1);
+            insert_table_free_space(t, page_num, PAGE_SIZE - get_page_header_size());
         } else { // 旧数据
             if (lseek(pr->data_fd, sizeof(pr->header) + PAGE_SIZE * page_num, SEEK_SET) == -1) {
                 return NULL;
@@ -118,7 +108,7 @@ inline int get_page_num(Page* p)
     return p->header.page_num;
 }
 
-static inline int get_sizeof_dir()
+inline int get_sizeof_dir()
 {
     return sizeof(int) * 2;
 }
@@ -153,15 +143,15 @@ static inline int get_last_page_dir_num(Page* p)
 
 // | header | page_directory | ... | recs |
 // page_directory => | is_delete | offset | ...
-Page* reserve_new_row_space(Pager* pr, int size, int* dir_num)
+Page* reserve_new_row_space(Table* t, Pager* pr, int size, int* dir_num)
 {
     Page* find_page;
     int offset;
 
     for (int i = 0; i <= MAX_PAGE_CNT_P_TABLE; i++) {
         // 预留空间给page_directory
-        if (size + get_sizeof_dir() <= pr->free_map[i]) {
-            find_page = get_page(pr, i);
+        if (size + get_sizeof_dir() <= get_page_free_space(t, pr, i)) {
+            find_page = get_page(t, pr, i);
             *dir_num = get_page_dir_cnt(find_page);
 
             if (*dir_num == 0) {
@@ -172,7 +162,7 @@ Page* reserve_new_row_space(Pager* pr, int size, int* dir_num)
 
             offset -= size;
             set_dir_info(find_page, find_page->header.dir_cnt++, 0, offset);
-            pr->free_map[i] -= (size + get_sizeof_dir());
+            incr_table_free_space(t, i, -(size + get_sizeof_dir()));
             return find_page;
         }
     }
@@ -183,18 +173,18 @@ Page* reserve_new_row_space(Pager* pr, int size, int* dir_num)
 }
 
 // 计算剩余空间是否足够, 足够则移动后续元素, 不够则删除原有元素, 并新增
-Page* resize_row_space(Pager* pr, Page* old_page, int* dir_num, int size)
+Page* resize_row_space(Table* t, Pager* pr, Page* old_page, int* dir_num, int size)
 {
     int old_size, free_space, move_start_offset, move_end_offset, move_size, origin_offset, origin_is_delete;
     void *move_src, *move_dest;
 
     old_size = get_row_len(old_page, *dir_num);
-    free_space = pr->free_map[get_page_num(old_page)];
+    free_space = get_page_free_space(t, pr, get_page_num(old_page));
 
     if (free_space < size - old_size) { // 当前页空间不足
         // 删除原有元素, 并新增
         set_row_deleted(old_page, *dir_num);
-        return reserve_new_row_space(pr, size, dir_num);
+        return reserve_new_row_space(t, pr, size, dir_num);
     }
 
     // 移动

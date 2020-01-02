@@ -1,7 +1,5 @@
 #include "include/table.h"
 
-static int write_row_to_page(Page* p, int dir_num, RowFmt* rf, QueryResult* qr);
-
 static inline void* row_real_pos(Page* p, int dir_num)
 {
     int offset;
@@ -33,7 +31,7 @@ inline void set_row_deleted(Page* p, int dir_num)
     set_dir_info(p, dir_num, 1, offset);
 }
 
-static int calc_serialized_row_len(RowFmt* rf, QueryResult* qr)
+int calc_serialized_row_len(RowFmt* rf, QueryResult* qr)
 {
     int result = 0;
     ColFmt* cf;
@@ -102,11 +100,11 @@ static void translate_to_row_fmt(RowFmt* rf, QueryResult* qr)
 int replace_row(Table* t, Page* p, int dir_num, RowFmt* rf, QueryResult* qr)
 {
     translate_to_row_fmt(rf, qr);
-    p = resize_row_space(t->pager, p, &dir_num, calc_serialized_row_len(rf, qr));
+    p = resize_row_space(t, t->pager, p, &dir_num, calc_serialized_row_len(rf, qr));
     return write_row_to_page(p, dir_num, rf, qr);
 }
 
-static int write_row_to_page(Page* p, int dir_num, RowFmt* rf, QueryResult* qr)
+int write_row_to_page(Page* p, int dir_num, RowFmt* rf, QueryResult* qr)
 {
     ColFmt* cf;
     RowHeader rh;
@@ -172,7 +170,7 @@ int serialize_row(Table* t, RowFmt* rf, QueryResult* qr)
     int dir_num;
 
     translate_to_row_fmt(rf, qr);
-    p = reserve_new_row_space(t->pager, calc_serialized_row_len(rf, qr), &dir_num);
+    p = reserve_new_row_space(t, t->pager, calc_serialized_row_len(rf, qr), &dir_num);
     return write_row_to_page(p, dir_num, rf, qr);
 }
 

@@ -11,6 +11,7 @@ static int get_where_expr_res(Table* t, Page* p, int dir_num, Ast* where_expr);
 static QueryResultVal* get_expr_res(Table* t, Page* p, int dir_num, Ast* expr);
 static QueryResultVal* av_to_qrv(Ast* a);
 static int execute_update_sql(DB* d, char* sql);
+static int execute_insert_sql(DB* d, char* sql);
 static QueryResultList* execute_select_sql(DB* d, char* sql, int* row_cnt, int* col_cnt);
 int lex_read(char* s, int len);
 int get_sys_tables_row_count(Table* t);
@@ -238,14 +239,52 @@ int get_page_free_space_stored(Table* t, int page_num)
 int insert_table_free_space(Table* t, int page_num, int free_space)
 {
     char sql[1024];
-    sprintf(sql, "insert into %s values( '%s', %d, %d);", SYS_FREE_SPACE, t->name, page_num, free_space);
-    return execute_update_sql(t->db, sql);
+    int dir_num, offset, size, new_free_space, res;
+    Page* p;
+    QueryResult* qr;
+
+    // 如果是sys_space_free table, 直接插入, 不要调用execute_insert_sql, 否则再次会触发reserve_new_row_space, 引发bug
+    // 拿到当前页, 计算后的大小直接插入
+    if (strcmp(t->name, SYS_FREE_SPACE) == 0) {
+        qr = smalloc(sizeof(QueryResultVal*) * 3);
+        qr[0] = smalloc(sizeof(QueryResultVal));
+        qr[0]->type = C_CHAR;
+        qr[0]->data = strdup(SYS_FREE_SPACE);
+        qr[1] = smalloc(sizeof(QueryResultVal));
+        qr[1]->type = C_INT;
+        qr[1]->data = smalloc(sizeof(int));
+        memcpy(qr[1]->data, &page_num, sizeof(int));
+        qr[2] = smalloc(sizeof(QueryResultVal));
+        qr[2]->type = C_INT;
+        qr[2]->data = smalloc(sizeof(int));
+        size = calc_serialized_row_len(t->row_fmt, qr);
+        new_free_space = free_space - (get_sizeof_dir() + size);
+        memcpy(qr[2]->data, &new_free_space, sizeof(int));
+
+        p = get_page(t, t->pager, page_num);
+        dir_num = get_page_dir_cnt(p);
+        offset = PAGE_SIZE - sizeof(p->header);
+        offset -= size;
+        set_dir_info(p, p->header.dir_cnt++, 0, offset);
+        res = write_row_to_page(p, dir_num, t->row_fmt, qr);
+        incr_table_row_cnt(t, 1);
+        destory_query_result(qr, 3);
+    } else {
+        sprintf(sql, "insert into %s values( '%s', %d, %d);", SYS_FREE_SPACE, t->name, page_num, free_space);
+        res = execute_insert_sql(t->db, sql);
+    }
+
+    return res;
 }
 
-int update_table_free_space(Table* t, int page_num, int free_space)
+int incr_table_free_space(Table* t, int page_num, int step)
 {
     char sql[1024];
-    sprintf(sql, "update %s set free_space = %d where table_name = '%s' and page_num = %d;", SYS_FREE_SPACE, free_space, t->name, page_num);
+    if (step >= 0) {
+        sprintf(sql, "update %s set free = free + %d where table_name = '%s' and page_num = %d;", SYS_FREE_SPACE, step, t->name, page_num);
+    } else {
+        sprintf(sql, "update %s set free = free - %d where table_name = '%s' and page_num = %d;", SYS_FREE_SPACE, -step, t->name, page_num);
+    }
     return execute_update_sql(t->db, sql);
 }
 
@@ -1007,10 +1046,8 @@ DB* db_init()
     d->tables = ht_init(NULL, NULL);
 
     if (access("t_sys_tables.dat", 0) == 0) {
-        printf("111\n");
         init_all_store_tables(d);
     } else {
-        printf("222\n");
         init_all_sys_tables(d);
     }
 
@@ -1208,33 +1245,30 @@ void init_all_store_tables(DB* d)
 {
     // 初始化sys_free_space表
     init_sys_free_space(d);
-    init_pager_free_space(open_table(d, SYS_FREE_SPACE), open_table(d, SYS_FREE_SPACE)->pager);
     // 初始化sys_tables
     init_sys_tables(d);
-    init_pager_free_space(open_table(d, SYS_TABLES), open_table(d, SYS_TABLES)->pager);
     // 初始化cols
     init_sys_cols(d);
-    init_pager_free_space(open_table(d, SYS_COLS), open_table(d, SYS_COLS)->pager);
 }
 
 void init_all_sys_tables(DB* d)
 {
-    Table* t;
+    // Table* t;
     char sql[1024] = { 0 };
+    // 初始化sys_free_space表
+    init_sys_free_space(d);
     // 初始化sys_tables
     init_sys_tables(d);
-    init_pager_free_space(open_table(d, SYS_TABLES), open_table(d, SYS_TABLES)->pager);
+    // 初始化sys_cols表
+    init_sys_cols(d);
     // 插入表名
     sprintf(sql, "insert into %s values('%s', 0);", SYS_TABLES, SYS_TABLES);
     execute_insert_sql(d, sql);
-    sprintf(sql, "insert into %s values('%s', 0);", SYS_TABLES, SYS_FREE_SPACE);
+    sprintf(sql, "insert into %s values('%s', 2);", SYS_TABLES, SYS_FREE_SPACE);
     execute_insert_sql(d, sql);
     sprintf(sql, "insert into %s values('%s', 0);", SYS_TABLES, SYS_COLS);
     execute_insert_sql(d, sql);
 
-    // 初始化sys_cols表
-    init_sys_cols(d);
-    init_pager_free_space(open_table(d, SYS_COLS), open_table(d, SYS_COLS)->pager);
     // 插入表结构
     sprintf(sql, "insert into %s values('%s', 'name', 0, %d, 255),('%s', 'row_count', 2, %d, 11);", SYS_COLS, SYS_TABLES, C_CHAR, SYS_TABLES, C_INT);
     execute_insert_sql(d, sql);
@@ -1242,29 +1276,6 @@ void init_all_sys_tables(DB* d)
     execute_insert_sql(d, sql);
     sprintf(sql, "insert into %s values('%s','table_name',0,%d,255),('%s','page_num',1,%d,11),('%s','free',2,%d,11);", SYS_COLS, SYS_FREE_SPACE, C_CHAR, SYS_FREE_SPACE, C_INT, SYS_FREE_SPACE, C_INT);
     execute_insert_sql(d, sql);
-
-    // 初始化sys_free_space表
-    init_sys_free_space(d);
-    init_pager_free_space(open_table(d, SYS_FREE_SPACE), open_table(d, SYS_FREE_SPACE)->pager);
-
-    // free space插入SYS_FREE_SPACE
-    t = open_table(d, SYS_TABLES);
-    for (int i = 0; i < MAX_PAGE_CNT_P_TABLE; i++) {
-        sprintf(sql, "insert into %s values('%s',%d,%d);", SYS_FREE_SPACE, t->name, i, t->pager->free_map[i]);
-        execute_insert_sql(d, sql);
-    }
-
-    t = open_table(d, SYS_COLS);
-    for (int i = 0; i < MAX_PAGE_CNT_P_TABLE; i++) {
-        sprintf(sql, "insert into %s values('%s',%d,%d);", SYS_FREE_SPACE, t->name, i, t->pager->free_map[i]);
-        execute_insert_sql(d, sql);
-    }
-
-    t = open_table(d, SYS_FREE_SPACE);
-    for (int i = 0; i < MAX_PAGE_CNT_P_TABLE; i++) {
-        sprintf(sql, "insert into %s values('%s',%d,%d);", SYS_FREE_SPACE, t->name, i, t->pager->free_map[i]);
-        execute_insert_sql(d, sql);
-    }
 }
 
 /**
@@ -1274,78 +1285,7 @@ void init_all_sys_tables(DB* d)
  */
 Table* open_table(DB* d, char* name)
 {
-    char sql[1024] = { 0 };
-    int row_cnt, col_cnt;
-    QueryResultList* qrl;
-    Table* t = NULL;
-    char table_file_name[1024];
-
-    get_table_file_name(name, table_file_name);
-
-    if ((t = ht_find(d->tables, name)) == NULL) {
-
-    } else {
-
-        // sprintf(sql, "select * from %s;", SYS_TABLES);
-        // qrl = execute_select_sql(d, sql, &row_cnt, &col_cnt);
-
-        // if (qrl == NULL) {
-        //     return NULL;
-        // }
-        // t = smalloc(sizeof(Table));
-        // t->db = d;
-        // t->name = strdup(name);
-        // t->data_fd = open(table_file_name, O_CREAT | O_RDWR, 0644);
-        // destory_query_result_list(qrl, row_cnt, col_cnt);
-
-        // // 获取表的结构信息
-        // // sprintf(sql, "select * from %s where table_name = '' order by origin_col_num asc;", SYS_TABLES);
-        // sprintf(sql, "select * from %s where table_name = '';", SYS_TABLES);
-        // qrl = execute_select_sql(d, sql, &row_cnt, &col_cnt);
-
-        // t->row_fmt = scalloc(sizeof(RowFmt), 1);
-
-        // assert(qrl != NULL);
-        // t->row_fmt->origin_cols_count = row_cnt;
-        // t->row_fmt->origin_cols_name = smalloc(sizeof(char*) * row_cnt);
-        // t->row_fmt->cols_fmt = scalloc(sizeof(ColFmt) * row_cnt, 1);
-        // ht_insert(d->tables, name, t);
-
-        // ColType ct;
-        // // table_name col_name origin_col_num col_type len
-        // for (int i = 0; i < row_cnt; i++) {
-        //     memcpy(&ct, qrl[i][3]->data, sizeof(int));
-
-        //     if (ct == C_VARCHAR) {
-        //         t->row_fmt->dynamic_cols_name = realloc(t->row_fmt->dynamic_cols_name, sizeof(char*) * ++t->row_fmt->dynamic_cols_count);
-        //         t->row_fmt->dynamic_cols_name[t->row_fmt->dynamic_cols_count - 1] = strdup(qrl[i][1]->data);
-        //     } else {
-        //         t->row_fmt->static_cols_name = realloc(t->row_fmt->static_cols_name, sizeof(char*) * ++t->row_fmt->static_cols_count);
-        //         t->row_fmt->static_cols_name[t->row_fmt->static_cols_count - 1] = strdup(qrl[i][1]->data);
-        //     }
-
-        //     t->row_fmt->origin_cols_name[t->row_fmt->origin_cols_count++] = strdup(qrl[i][1]->data);
-        //     t->row_fmt->cols_fmt[i].is_dynamic = ct == C_VARCHAR;
-        //     memcpy(&t->row_fmt->cols_fmt[i].len, qrl[i][4]->data, sizeof(int));
-        //     memcpy(&t->row_fmt->cols_fmt[i].type, qrl[i][3]->data, sizeof(int));
-        // }
-
-        // destory_query_result_list(qrl, row_cnt, col_cnt);
-        // // 获取空闲page信息 table_name page_num free
-        // sprintf(sql, "select * from %s where table_name = '%s';", SYS_FREE_SPACE, name);
-        // qrl = execute_select_sql(d, sql, &row_cnt, &col_cnt);
-        // t->pager = smalloc(sizeof(Pager));
-
-        // for (int i = 0; i < MAX_PAGE_CNT_P_TABLE; i++) {
-        //     t->pager->pages[i] = NULL;
-        //     // t->free_map[i] = PAGE_SIZE - sizeof(Page);
-        //     memcpy(&t->free_map[i], qrl[i][2], sizeof(int));
-        // }
-        // destory_query_result_list(qrl, row_cnt, col_cnt);
-        // }
-    }
-
-    return t;
+    return ht_find(d->tables, name);
 }
 
 void table_flush(Table* t)
