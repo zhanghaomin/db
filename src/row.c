@@ -112,7 +112,7 @@ void* serialize_row(RowFmt* rf, QueryResult* qr, int* len)
     translate_to_row_fmt(rf, qr);
     rh.row_len = calc_serialized_row_len(rf, qr);
     *len = rh.row_len;
-    store = smalloc(rh.row_len);
+    store = scalloc(rh.row_len, 1);
 
     data_start = store + get_row_header_len(); // skip header
     dynamic_offset_store = data_start;

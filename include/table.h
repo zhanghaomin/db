@@ -119,7 +119,6 @@ int replace_row(Table* t, Page* p, int dir_num, void* data, int len);
 Pager* init_pager(int fd);
 Page* get_page(Table* t, Pager* pr, int page_num);
 
-// int replace_row(Table* t, Page* p, int dir_num, RowFmt* rf, QueryResult* qr);
 int calc_serialized_row_len(RowFmt* rf, QueryResult* qr);
 int get_col_num_by_col_name(RowFmt* rf, char* col_name);
 int get_dynamic_col_num_by_col_name(RowFmt* rf, char* col_name);

@@ -20,13 +20,11 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     FILE* f;
     char s[4096];
     DB* d;
-    Table* t;
     QueryResultList* qrl;
     int res, row_count, field_count;
 
     f = fopen("./tests/update_test.sql", "r+");
     d = db_init();
-    t = open_table(d, "txzj_miniapp_white_list");
 
     lex_read_line(f, s, 4096);
     res = update_table(d, G_AST);

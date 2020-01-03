@@ -190,7 +190,7 @@ int write_row_head(Page* p, void* data, int size)
     int offset;
     offset = PAGE_SIZE - get_page_header_size();
     offset -= size;
-    memcpy(row_real_pos(p, 0), data, size);
+    memcpy(p->data + offset, data, size);
     set_dir_info(p, p->header.dir_cnt++, 0, offset);
     return 1;
 }
@@ -209,9 +209,10 @@ int write_row_to_page(Table* t, Pager* pr, void* data, int size)
     }
 
     offset -= size;
-    memcpy(row_real_pos(p, dir_num), data, size);
-    set_dir_info(p, p->header.dir_cnt++, 0, offset);
+    memcpy(p->data + offset, data, size);
+    set_dir_info(p, p->header.dir_cnt, 0, offset);
     incr_table_free_space(t, p->header.page_num, -(size + get_sizeof_dir()));
+    p->header.dir_cnt++;
     return 1;
 }
 
