@@ -1,34 +1,30 @@
 #include "include/table.h"
 
-static inline void* row_real_pos(Page* p, int dir_num)
-{
-    int offset;
-    get_dir_info(p, dir_num, NULL, &offset);
-    return (void*)(p->data + offset);
-}
-
-inline int get_row_len(Page* p, int dir_num)
-{
-    return ((RowHeader*)row_real_pos(p, dir_num))->row_len;
-}
-
 static inline int get_row_header_len()
 {
     return sizeof(RowHeader);
 }
 
-inline int row_is_delete(Page* p, int dir_num)
+int get_dynamic_col_num_by_col_name(RowFmt* rf, char* col_name)
 {
-    int is_delete;
-    get_dir_info(p, dir_num, &is_delete, NULL);
-    return is_delete;
+    for (int i = 0; i < rf->dynamic_cols_count; i++) {
+        if (strcmp(rf->dynamic_cols_name[i], col_name) == 0) {
+            return i;
+        }
+    }
+
+    return -1;
 }
 
-inline void set_row_deleted(Page* p, int dir_num)
+int get_col_num_by_col_name(RowFmt* rf, char* col_name)
 {
-    int offset;
-    get_dir_info(p, dir_num, NULL, &offset);
-    set_dir_info(p, dir_num, 1, offset);
+    for (int i = 0; i < rf->origin_cols_count; i++) {
+        if (strcmp(rf->origin_cols_name[i], col_name) == 0) {
+            return i;
+        }
+    }
+
+    return -1;
 }
 
 int calc_serialized_row_len(RowFmt* rf, QueryResult* qr)
@@ -97,26 +93,26 @@ static void translate_to_row_fmt(RowFmt* rf, QueryResult* qr)
     }
 }
 
-int replace_row(Table* t, Page* p, int dir_num, RowFmt* rf, QueryResult* qr)
-{
-    translate_to_row_fmt(rf, qr);
-    p = resize_row_space(t, t->pager, p, &dir_num, calc_serialized_row_len(rf, qr));
-    return write_row_to_page(p, dir_num, rf, qr);
-}
-
-int write_row_to_page(Page* p, int dir_num, RowFmt* rf, QueryResult* qr)
+/*
+    || RowHeader || 1st dynamic offset || 2nd dynamic offset || ... || 1st reclen | 1st static rec || 2nd reclen | 2nd static rec || ... || 1st dynamic reclen | 1st dynamic rec || 2nd dynamic reclen | 2nd dynamic rec || ...
+                            |______________________________________________________________________________________________________________|
+                                                  |________________________________________________________________________________________________________________________________|
+     偏移量都是相对header的
+*/
+// 4 + 4 + 4 + 4 + 8 + 4 + 255 + 4 + 52
+// 4 + 4 + (4+4) + (4+4) + (4+255) + (4+4) + (4+4) + (4 + 52)
+void* serialize_row(RowFmt* rf, QueryResult* qr, int* len)
 {
     ColFmt* cf;
     RowHeader rh;
-    void *dynamic_offset_store, *data_start, *store, *origin_store;
+    void *dynamic_offset_store, *data_start, *store;
     int offset = 0;
     int val_len = 0;
-    int res;
 
+    translate_to_row_fmt(rf, qr);
     rh.row_len = calc_serialized_row_len(rf, qr);
-    store = row_real_pos(p, dir_num);
-    origin_store = smalloc(rh.row_len);
-    memcpy(origin_store, store, rh.row_len);
+    *len = rh.row_len;
+    store = smalloc(rh.row_len);
 
     data_start = store + get_row_header_len(); // skip header
     dynamic_offset_store = data_start;
@@ -154,38 +150,33 @@ int write_row_to_page(Page* p, int dir_num, RowFmt* rf, QueryResult* qr)
 
     // 写入header
     memcpy(data_start - get_row_header_len(), &rh, get_row_header_len());
-    res = memcmp(origin_store, data_start - get_row_header_len(), rh.row_len) != 0;
-    free(origin_store);
-    return res;
+    return data_start - get_row_header_len();
 }
 
-/*
-    || RowHeader || 1st dynamic offset || 2nd dynamic offset || ... || 1st reclen | 1st static rec || 2nd reclen | 2nd static rec || ... || 1st dynamic reclen | 1st dynamic rec || 2nd dynamic reclen | 2nd dynamic rec || ...
-                            |______________________________________________________________________________________________________________|
-                                                  |________________________________________________________________________________________________________________________________|
-     偏移量都是相对header的
-*/
-// 4 + 4 + 4 + 4 + 8 + 4 + 255 + 4 + 52
-// 4 + 4 + (4+4) + (4+4) + (4+255) + (4+4) + (4+4) + (4 + 52)
-int serialize_row(Table* t, RowFmt* rf, QueryResult* qr)
+QueryResult* unserialize_full_row(void* row, RowFmt* rf, int* col_cnt)
 {
-    Page* p;
-    int dir_num;
+    QueryResult* qr;
+    qr = smalloc(rf->origin_cols_count * sizeof(QueryResultVal*));
 
-    translate_to_row_fmt(rf, qr);
-    p = reserve_new_row_space(t, t->pager, calc_serialized_row_len(rf, qr), &dir_num);
-    return write_row_to_page(p, dir_num, rf, qr);
+    for (int i = 0; i < rf->origin_cols_count; i++) {
+        qr[i] = unserialize_row(row, rf, rf->origin_cols_name[i]);
+    }
+
+    if (col_cnt != NULL) {
+        *col_cnt = rf->origin_cols_count;
+    }
+
+    return qr;
 }
 
-QueryResultVal* get_col_val(Page* p, int dir_num, RowFmt* rf, char* col_name)
+QueryResultVal* unserialize_row(void* row, RowFmt* rf, char* col_name)
 {
     int col_num, dynamic_col_num, len, offset;
-    void *col, *row;
+    void* col;
     ColFmt cf;
     QueryResultVal* qrv;
     qrv = smalloc(sizeof(QueryResultVal));
     col_num = get_col_num_by_col_name(rf, col_name);
-    row = row_real_pos(p, dir_num);
     row += get_row_header_len();
 
     if (col_num == -1) {

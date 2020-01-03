@@ -61,28 +61,6 @@ QueryResult* get_table_header(Table* t)
     return qr;
 }
 
-int get_dynamic_col_num_by_col_name(RowFmt* rf, char* col_name)
-{
-    for (int i = 0; i < rf->dynamic_cols_count; i++) {
-        if (strcmp(rf->dynamic_cols_name[i], col_name) == 0) {
-            return i;
-        }
-    }
-
-    return -1;
-}
-
-int get_col_num_by_col_name(RowFmt* rf, char* col_name)
-{
-    for (int i = 0; i < rf->origin_cols_count; i++) {
-        if (strcmp(rf->origin_cols_name[i], col_name) == 0) {
-            return i;
-        }
-    }
-
-    return -1;
-}
-
 inline int get_query_result_val_len(QueryResultVal* qrv)
 {
     if (qrv->type == C_INT) {
@@ -239,8 +217,9 @@ int get_page_free_space_stored(Table* t, int page_num)
 int insert_table_free_space(Table* t, int page_num, int free_space)
 {
     char sql[1024];
-    int dir_num, offset, size, new_free_space, res;
+    int size, new_free_space, res, len;
     Page* p;
+    void* data;
     QueryResult* qr;
 
     // 如果是sys_space_free table, 直接插入, 不要调用execute_insert_sql, 否则再次会触发reserve_new_row_space, 引发bug
@@ -263,12 +242,10 @@ int insert_table_free_space(Table* t, int page_num, int free_space)
         new_free_space = free_space - (get_sizeof_dir() + size);
         memcpy(qr[2]->data, &new_free_space, sizeof(int));
 
+        data = serialize_row(t->row_fmt, qr, &len);
         p = get_page(t, t->pager, page_num);
-        dir_num = get_page_dir_cnt(p);
-        offset = PAGE_SIZE - sizeof(p->header);
-        offset -= size;
-        set_dir_info(p, p->header.dir_cnt++, 0, offset);
-        res = write_row_to_page(p, dir_num, t->row_fmt, qr);
+        write_row_head(p, data, len);
+        free(data);
         incr_table_row_cnt(t, 1);
         destory_query_result(qr, 3);
     } else {
@@ -306,8 +283,11 @@ static int add_table(DB* d, char* table_name)
 
 static int add_row_to_table(Table* t, QueryResult* qr)
 {
-    int res;
-    res = serialize_row(t, t->row_fmt, qr);
+    int res, len;
+    void* data;
+    data = serialize_row(t->row_fmt, qr, &len);
+    res = write_row_to_page(t, t->pager, data, len);
+    free(data);
     incr_table_row_cnt(t, 1);
     return res;
 }
@@ -690,7 +670,7 @@ static QueryResultVal* get_expr_res(Table* t, Page* p, int dir_num, Ast* expr)
 
     if (expr->kind == AST_VAL) {
         if (GET_AV_TYPE(expr) == AVT_ID) {
-            qrv = get_col_val(p, dir_num, t->row_fmt, GET_AV_STR(expr));
+            qrv = unserialize_row(row_real_pos(p, dir_num), t->row_fmt, GET_AV_STR(expr));
         } else {
             qrv = av_to_qrv(expr);
         }
@@ -733,7 +713,7 @@ QueryResult* get_table_row(Table* t, Page* p, int dir_num, int* col_cnt)
     qr = smalloc(t->row_fmt->origin_cols_count * sizeof(QueryResultVal*));
 
     for (int i = 0; i < t->row_fmt->origin_cols_count; i++) {
-        qr[i] = get_col_val(p, dir_num, t->row_fmt, t->row_fmt->origin_cols_name[i]);
+        qr[i] = unserialize_row(row_real_pos(p, dir_num), t->row_fmt, GET_AV_STR(t->row_fmt->origin_cols_name[i]));
     }
 
     if (col_cnt != NULL) {
@@ -769,7 +749,7 @@ QueryResult* filter_row(Table* t, Cursor* c, Ast* expect_cols, Ast* where_top_ex
 
                         free(full_row);
                     } else {
-                        qrv = get_col_val(cursor_page(c), cursor_dir_num(c), t->row_fmt, GET_AV_STR(expect_cols->child[i]));
+                        qrv = unserialize_row(row_real_pos(cursor_page(c), cursor_dir_num(c)), t->row_fmt, GET_AV_STR(expect_cols->child[i]));
                         qr[col_cnt++] = qrv;
                     }
                 }
@@ -984,7 +964,8 @@ static int update_row(Table* t, Page* p, int dir_num, Ast* set_list)
     QueryResult* qr;
     QueryResultVal* origin;
     Ast *col_name, *expr;
-    int row_cnt, col_num, res;
+    int row_cnt, col_num, res, len;
+    void* data;
 
     qr = get_table_row(t, p, dir_num, &row_cnt);
     for (int i = 0; i < set_list->children; i++) {
@@ -996,9 +977,12 @@ static int update_row(Table* t, Page* p, int dir_num, Ast* set_list)
         qr[col_num] = get_expr_res(t, p, dir_num, expr);
         destory_query_result_val(origin);
     }
+
+    data = serialize_row(t->row_fmt, qr, &len);
     // 替换原有数据
-    res = replace_row(t, p, dir_num, t->row_fmt, qr);
+    res = replace_row(t, p, dir_num, data, len);
     destory_query_result(qr, row_cnt);
+    free(data);
     return res;
 }
 
@@ -1229,18 +1213,18 @@ void init_all_sys_tables(DB* d)
     // 插入表名
     sprintf(sql, "insert into %s values('%s', 0);", SYS_TABLES, SYS_TABLES);
     execute_insert_sql(d, sql);
-    sprintf(sql, "insert into %s values('%s', 2);", SYS_TABLES, SYS_FREE_SPACE);
-    execute_insert_sql(d, sql);
-    sprintf(sql, "insert into %s values('%s', 0);", SYS_TABLES, SYS_COLS);
-    execute_insert_sql(d, sql);
+    // sprintf(sql, "insert into %s values('%s', 2);", SYS_TABLES, SYS_FREE_SPACE);
+    // execute_insert_sql(d, sql);
+    // sprintf(sql, "insert into %s values('%s', 0);", SYS_TABLES, SYS_COLS);
+    // execute_insert_sql(d, sql);
 
-    // 插入表结构
-    sprintf(sql, "insert into %s values('%s', 'name', 0, %d, 255),('%s', 'row_count', 2, %d, 4);", SYS_COLS, SYS_TABLES, C_CHAR, SYS_TABLES, C_INT);
-    execute_insert_sql(d, sql);
-    sprintf(sql, "insert into %s values('%s','table_name',0,%d,255),('%s','col_name',1,%d,255),('%s','origin_col_num',2,%d,4),('%s','col_type',3,%d,4),('%s','len',4,%d,4);", SYS_COLS, SYS_COLS, C_CHAR, SYS_COLS, C_CHAR, SYS_COLS, C_INT, SYS_COLS, C_INT, SYS_COLS, C_INT);
-    execute_insert_sql(d, sql);
-    sprintf(sql, "insert into %s values('%s','table_name',0,%d,255),('%s','page_num',1,%d,4),('%s','free',2,%d,4);", SYS_COLS, SYS_FREE_SPACE, C_CHAR, SYS_FREE_SPACE, C_INT, SYS_FREE_SPACE, C_INT);
-    execute_insert_sql(d, sql);
+    // // 插入表结构
+    // sprintf(sql, "insert into %s values('%s', 'name', 0, %d, 255),('%s', 'row_count', 2, %d, 4);", SYS_COLS, SYS_TABLES, C_CHAR, SYS_TABLES, C_INT);
+    // execute_insert_sql(d, sql);
+    // sprintf(sql, "insert into %s values('%s','table_name',0,%d,255),('%s','col_name',1,%d,255),('%s','origin_col_num',2,%d,4),('%s','col_type',3,%d,4),('%s','len',4,%d,4);", SYS_COLS, SYS_COLS, C_CHAR, SYS_COLS, C_CHAR, SYS_COLS, C_INT, SYS_COLS, C_INT, SYS_COLS, C_INT);
+    // execute_insert_sql(d, sql);
+    // sprintf(sql, "insert into %s values('%s','table_name',0,%d,255),('%s','page_num',1,%d,4),('%s','free',2,%d,4);", SYS_COLS, SYS_FREE_SPACE, C_CHAR, SYS_FREE_SPACE, C_INT, SYS_FREE_SPACE, C_INT);
+    // execute_insert_sql(d, sql);
 }
 
 /**
