@@ -256,5 +256,5 @@ int replace_row(Table* t, Page* p, int dir_num, void* data, int len)
     memcpy(row_real_pos(p, dir_num), data, len);
     res = memcmp(origin_store, data, len);
     free(origin_store);
-    return res;
+    return res != 0;
 }

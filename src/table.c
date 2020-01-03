@@ -244,7 +244,7 @@ int insert_table_free_space(Table* t, int page_num, int free_space)
 
         data = serialize_row(t->row_fmt, qr, &len);
         p = get_page(t, t->pager, page_num);
-        write_row_head(p, data, len);
+        res = write_row_head(p, data, len);
         free(data);
         incr_table_row_cnt(t, 1);
         destory_query_result(qr, 3);
