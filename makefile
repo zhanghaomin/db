@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -I. -g -Wall -w
+CFLAGS = -I. -g -Wall -W
 IDIR = include
 
 LEX = flex
@@ -10,7 +10,7 @@ TDIR = tests
 SDIR = src
 ODIR = src/obj
 
-_TOBJ = ast_test.o create_insert_test.o persist_test.o select_test.o update_test.o 
+_TOBJ = ast_test.o create_insert_test.o persist_test.o select_test.o update_test.o delete_test.o
 TOBJ = $(patsubst %, $(ODIR)/%, $(_TOBJ))
 
 _OBJ = ast.o ht.o parser.o scanner.o table.o util.o cursor.o pager.o fmt.o row.o

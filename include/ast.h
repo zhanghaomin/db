@@ -125,7 +125,7 @@ typedef struct {
     _va = smalloc(sizeof(AstVal)); \
     _va->kind = AST_VAL;           \
     _t##_CTOR(_va, _v);            \
-    _va;                           \
+    (Ast*)_va;                     \
 })
 
 #define AVT_INT_CTOR(_v, _i) ({ \

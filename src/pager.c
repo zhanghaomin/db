@@ -161,8 +161,9 @@ Page* reserve_new_row_space(Table* t, Pager* pr, int size, int* dir_num)
             }
 
             offset -= size;
-            set_dir_info(find_page, find_page->header.dir_cnt++, 0, offset);
+            set_dir_info(find_page, find_page->header.dir_cnt, 0, offset);
             incr_table_free_space(t, i, -(size + get_sizeof_dir()));
+            find_page->header.dir_cnt++;
             return find_page;
         }
     }

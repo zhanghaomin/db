@@ -60,7 +60,7 @@ void do_cmd(DB* d, Ast* a)
     printf("query cost: %fms.\n", timeuse);
 }
 
-int main(int argc, char const* argv[])
+int main(int argc UNUSED, char const* argv[] UNUSED)
 {
     DB* d;
     char* line;

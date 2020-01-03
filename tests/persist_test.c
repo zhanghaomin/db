@@ -29,7 +29,6 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     t = open_table(d, "txzj_miniapp_white_list");
 
     assert_eq_str(t->name, "txzj_miniapp_white_list");
-    assert(t->data_fd > 0);
     assert(access("t_txzj_miniapp_white_list.dat", 0) == 0);
     assert(get_table_row_cnt(t) == 27);
     RowFmt* rf;

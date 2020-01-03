@@ -31,10 +31,8 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     t = open_table(d, "txzj_miniapp_white_list");
     assert(t != NULL);
     assert_eq_str(t->name, "txzj_miniapp_white_list");
-    assert(t->data_fd > 0);
     assert(access("t_txzj_miniapp_white_list.dat", 0) == 0);
     assert(get_table_row_cnt(t) == 0);
-    assert(get_table_max_page_num(t) == 0);
 
     RowFmt* rf;
     rf = t->row_fmt;

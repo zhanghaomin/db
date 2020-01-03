@@ -111,6 +111,7 @@ int write_row_to_page(Page* p, int dir_num, RowFmt* rf, QueryResult* qr)
     void *dynamic_offset_store, *data_start, *store, *origin_store;
     int offset = 0;
     int val_len = 0;
+    int res;
 
     rh.row_len = calc_serialized_row_len(rf, qr);
     store = row_real_pos(p, dir_num);
@@ -153,7 +154,9 @@ int write_row_to_page(Page* p, int dir_num, RowFmt* rf, QueryResult* qr)
 
     // 写入header
     memcpy(data_start - get_row_header_len(), &rh, get_row_header_len());
-    return memcmp(origin_store, data_start - get_row_header_len(), rh.row_len) != 0;
+    res = memcmp(origin_store, data_start - get_row_header_len(), rh.row_len) != 0;
+    free(origin_store);
+    return res;
 }
 
 /*
