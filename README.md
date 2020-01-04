@@ -11,9 +11,8 @@ v0.0.1
 6. sql -> ast -> execute
 
 TODO
-1. 表格式，表名存在表里
-2. free-page存在表里
-3. ast -> logic-plan
+1. ast -> logic-plan
+2. lru
 
 v0.0.2
 1. 增加lru，可以设置最大缓存页数
