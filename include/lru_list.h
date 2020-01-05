@@ -11,6 +11,7 @@
 typedef struct _LruListNode {
     struct _LruListNode* next;
     struct _LruListNode* prev;
+    char* key;
     void* data;
 } LruListNode;
 
@@ -21,6 +22,7 @@ typedef struct {
     HtValueDtor val_dtor;
     HtValueCtor val_ctor;
     int cap;
+    int len;
 } LruList;
 
 #endif
