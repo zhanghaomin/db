@@ -14,10 +14,9 @@ static int execute_update_sql(DB* d, char* sql);
 static int execute_insert_sql(DB* d, char* sql);
 static QueryResultList* execute_select_sql(DB* d, char* sql, int* row_cnt, int* col_cnt);
 int lex_read(char* s, int len);
-int get_sys_tables_row_count(Table* t);
 static int qrv_to_int(QueryResultVal* qrv);
-void init_all_sys_tables(DB* d);
-void init_all_store_tables(DB* d);
+static void init_all_sys_tables(DB* d);
+static void init_all_store_tables(DB* d);
 
 char* SYS_TABLES = "sys_tables";
 char* SYS_COLS = "sys_cols";
