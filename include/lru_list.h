@@ -2,11 +2,6 @@
 #define _LRU_LIST_H
 
 #include "ht.h"
-// init(len)
-// get(k)
-// set(k,v) 可能会导致一个过期
-// del(k)
-//
 
 typedef struct _LruListNode {
     struct _LruListNode* next;
@@ -25,4 +20,10 @@ typedef struct {
     int len;
 } LruList;
 
+LruList* lru_list_init(int size, HtValueCtor ctor, HtValueDtor dtor);
+void* lru_list_add(LruList* l, char* key, void* data);
+void* lru_list_get(LruList* l, char* key);
+void* lru_list_head(LruList* l);
+void* lru_list_tail(LruList* l);
+void** lru_get_all(LruList* l, int* len);
 #endif

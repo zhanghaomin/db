@@ -36,7 +36,7 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     assert(qrl != NULL);
     assert(row_count != 0);
     assert(field_count != 0);
-    println_rows(qrl, row_count, field_count);
+    // println_rows(qrl, row_count, field_count);
     ast_destory(G_AST);
     destory_query_result_list(qrl, row_count, field_count);
 

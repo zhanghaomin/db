@@ -43,6 +43,16 @@ static void evict_node_if_needed(LruList* l)
     free(ln);
 }
 
+void* lru_list_head(LruList* l)
+{
+    return l->head->data;
+}
+
+void* lru_list_tail(LruList* l)
+{
+    return l->tail->data;
+}
+
 void* lru_list_add(LruList* l, char* key, void* data)
 {
     LruListNode* ln;
@@ -74,7 +84,7 @@ void* lru_list_add(LruList* l, char* key, void* data)
     l->len++;
     ht_insert(l->elements, key, ln);
     evict_node_if_needed(l);
-    return ln;
+    return ln->data;
 }
 
 void* lru_list_get(LruList* l, char* key)
@@ -99,7 +109,25 @@ void* lru_list_get(LruList* l, char* key)
     }
 
     ln->next = l->head;
+    l->head->prev = ln;
     l->head = ln;
     ln->prev = NULL;
     return ln->data;
+}
+
+void** lru_get_all(LruList* l, int* len)
+{
+    void** res = NULL;
+    LruListNode* ln;
+    int i = 0;
+    ln = l->head;
+
+    while (ln != NULL) {
+        res = realloc(res, sizeof(void*) * ++i);
+        res[i - 1] = ln->data;
+        ln = ln->next;
+    }
+
+    *len = i;
+    return res;
 }
