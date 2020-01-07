@@ -35,7 +35,7 @@ static void evict_node_if_needed(LruList* l)
     l->len--;
     ht_delete(l->elements, ln->key);
 
-    if (l->val_ctor != NULL) {
+    if (l->val_dtor != NULL) {
         l->val_dtor(ln->data);
     }
 
@@ -115,6 +115,11 @@ void* lru_list_get(LruList* l, char* key)
     return ln->data;
 }
 
+void lru_free_all_list(void** data, int len UNUSED)
+{
+    free(data);
+}
+
 void** lru_get_all(LruList* l, int* len)
 {
     void** res = NULL;
@@ -130,4 +135,24 @@ void** lru_get_all(LruList* l, int* len)
 
     *len = i;
     return res;
+}
+
+void lru_list_destory(LruList* l)
+{
+    LruListNode* ln = l->head;
+    LruListNode* next;
+
+    while (ln != NULL) {
+        if (l->val_dtor != NULL) {
+            l->val_dtor(ln->data);
+        }
+
+        next = ln->next;
+        free(ln->key);
+        free(ln);
+        ln = next;
+    }
+
+    ht_release(l->elements);
+    free(l);
 }

@@ -26,4 +26,6 @@ void* lru_list_get(LruList* l, char* key);
 void* lru_list_head(LruList* l);
 void* lru_list_tail(LruList* l);
 void** lru_get_all(LruList* l, int* len);
+void lru_list_destory(LruList* l);
+void lru_free_all_list(void** data, int len);
 #endif

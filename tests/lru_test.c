@@ -44,6 +44,7 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     char* expect1[] = { "444", "333", "222" };
     assert(len == 3);
     assert_eq_str_arr(expect1, res, len);
+    lru_free_all_list((void**)res, len);
 
     assert(strcmp(lru_list_head(l), s4) == 0);
     assert(strcmp(lru_list_tail(l), s2) == 0);
@@ -57,6 +58,7 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     assert(len == 3);
     char* expect2[] = { "333", "444", "222" };
     assert_eq_str_arr(expect2, res, len);
+    lru_free_all_list((void**)res, len);
 
     assert(strcmp(lru_list_add(l, "key1", s1), s1) == 0); // 1 3 4
     assert(strcmp(lru_list_head(l), s1) == 0);
@@ -66,6 +68,7 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     assert(len == 3);
     char* expect3[] = { "111", "333", "444" };
     assert_eq_str_arr(expect3, res, len);
+    lru_free_all_list((void**)res, len);
 
     // printf("%s %s\n", lru_list_head(l), lru_list_tail(l));
     assert(strcmp(lru_list_get(l, "key4"), s4) == 0); // 4 1 3
@@ -76,6 +79,7 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     assert(len == 3);
     char* expect4[] = { "444", "111", "333" };
     assert_eq_str_arr(expect4, res, len);
+    lru_free_all_list((void**)res, len);
 
     assert(strcmp(lru_list_add(l, "key2", s2), s2) == 0); // 2 4 1
     assert(strcmp(lru_list_head(l), s2) == 0);
@@ -85,6 +89,8 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     assert(len == 3);
     char* expect5[] = { "222", "444", "111" };
     assert_eq_str_arr(expect5, res, len);
+    lru_free_all_list((void**)res, len);
+    lru_list_destory(l);
 
     l = lru_list_init(1, NULL, NULL);
     assert(strcmp(lru_list_add(l, "key1", s1), s1) == 0);
@@ -95,6 +101,9 @@ int main(int argc UNUSED, char const* argv[] UNUSED)
     assert(len == 1);
     char* expect6[] = { "222" };
     assert_eq_str_arr(expect6, res, len);
+    lru_free_all_list((void**)res, len);
+
+    lru_list_destory(l);
 
     printf("lru test pass\n");
     return 0;
