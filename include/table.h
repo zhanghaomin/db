@@ -35,25 +35,11 @@ typedef struct {
     int dynamic_cols_count; // 不定长字段数量
 } RowFmt;
 
-// | header | page_directory | ... | recs |
-// page_directory => | is_delete | offset | ...
-// 不用page_directory时，一个记录的增大会导致所有记录后移，直接依赖他们偏移量的地方都需要更改（更新索引会很麻烦）
-// 使用page_directory在更新时，如果空间足够，那么移动他后面的元素，外面的引用不需要修改，如果空间不够，删除原来的记录，寻找新的空间插入，外面的引用只需要更改当前记录
-// 删除只标记，不删除，等剩余空间太大时再删除
-typedef struct {
-    struct {
-        int page_num; // 页号
-        int dir_cnt; // 页目录项数
-    } header;
-    char data[];
-} Page;
-
 typedef struct {
     struct {
         int page_cnt;
     } header;
     int data_fd;
-    Page* pages[MAX_PAGE_CNT_P_TABLE]; // 表里的page集合
 } Pager;
 
 typedef struct {
@@ -70,8 +56,7 @@ typedef struct {
 typedef struct {
     Pager* pager;
     Table* table;
-    Page* page;
-    // int row_num; // 当前指向第几行，不包括已删除的
+    int page_num; // 当前指向第几页
     int page_dir_num; // 当前指向page中第几个目录项
 } Cursor;
 
@@ -94,30 +79,25 @@ void println_rows(QueryResultList* qrl, int qrl_len, int qr_len);
 
 void cursor_destory(Cursor* c);
 void cursor_next(Cursor* c);
-void cursor_rewind(Cursor* c);
 int cursor_is_end(Cursor* c);
 int cursor_dir_num(Cursor* c);
 int cursor_value_is_deleted(Cursor* c);
-Page* cursor_page(Cursor* c);
+int cursor_page_num(Cursor* c);
 Cursor* cursor_init(Table* t);
 
-void set_row_deleted(Page* p, int dir_num);
-void set_dir_info(Page* p, int dir_num, int is_delete, int row_offset);
-void get_dir_info(Page* p, int dir_num, int* is_delete, int* row_offset);
-void* row_real_pos(Page* p, int dir_num);
-int get_page_num(Page* p);
+void set_row_deleted(Table* t, int page_num, int dir_num);
 int get_page_cnt(Pager* pr);
-int get_page_dir_cnt(Page* p);
+int get_page_dir_cnt(Table* t, int page_num);
 int get_sizeof_dir();
 int flush_pager_header(Pager* pr);
-int flush_page(Pager* pr, int page_num);
-int write_row_to_page(Table* t, Pager* pr, void* data, int size);
-int get_row_len(Page* p, int dir_num);
-int row_is_delete(Page* p, int dir_num);
-int write_row_head(Page* p, void* data, int size);
-int replace_row(Table* t, Page* p, int dir_num, void* data, int len);
+int write_row_to_page(Table* t, void* data, int size);
+int row_is_delete(Table* t, int page_num, int dir_num);
+int write_row_head(Table* t, int page_num, void* data, int size);
+int replace_row(Table* t, int page_num, int dir_num, void* data, int len);
+void* copy_row_raw_data(Table* t, int page_num, int dir_num);
 Pager* init_pager(int fd);
-Page* get_page(Table* t, Pager* pr, int page_num);
+void init_GP(int size);
+void clean_page(void* data);
 
 int calc_serialized_row_len(RowFmt* rf, QueryResult* qr);
 int get_col_num_by_col_name(RowFmt* rf, char* col_name);

@@ -7,8 +7,8 @@
 #include <string.h>
 #include <unistd.h>
 
-static int get_where_expr_res(Table* t, Page* p, int dir_num, Ast* where_expr);
-static QueryResultVal* get_expr_res(Table* t, Page* p, int dir_num, Ast* expr);
+static int get_where_expr_res(Table* t, int page_num, int dir_num, Ast* where_expr);
+static QueryResultVal* get_expr_res(Table* t, int page_num, int dir_num, Ast* expr);
 static QueryResultVal* av_to_qrv(Ast* a);
 static int execute_update_sql(DB* d, char* sql);
 static int execute_insert_sql(DB* d, char* sql);
@@ -217,7 +217,6 @@ int insert_table_free_space(Table* t, int page_num, int free_space)
 {
     char sql[1024];
     int size, new_free_space, res, len;
-    Page* p;
     void* data;
     QueryResult* qr;
 
@@ -242,8 +241,7 @@ int insert_table_free_space(Table* t, int page_num, int free_space)
         memcpy(qr[2]->data, &new_free_space, sizeof(int));
 
         data = serialize_row(t->row_fmt, qr, &len);
-        p = get_page(t, t->pager, page_num);
-        res = write_row_head(p, data, len);
+        res = write_row_head(t, page_num, data, len);
         free(data);
         incr_table_row_cnt(t, 1);
         destory_query_result(qr, 3);
@@ -285,7 +283,7 @@ static int add_row_to_table(Table* t, QueryResult* qr)
     int res, len;
     void* data;
     data = serialize_row(t->row_fmt, qr, &len);
-    res = write_row_to_page(t, t->pager, data, len);
+    res = write_row_to_page(t, data, len);
     free(data);
     incr_table_row_cnt(t, 1);
     return res;
@@ -558,14 +556,14 @@ static QueryResultVal* do_calc_double(double op1, double op2, ExprOp op)
     return qrv;
 }
 
-static QueryResultVal* cmd_bool(Table* t, Page* p, int dir_num, Ast* op1, Ast* op2, ExprOp op)
+static QueryResultVal* cmd_bool(Table* t, int page_num, int dir_num, Ast* op1, Ast* op2, ExprOp op)
 {
     QueryResultVal *op1_qrv, *op2_qrv, *res_qrv;
 
-    op1_qrv = get_expr_res(t, p, dir_num, op1);
+    op1_qrv = get_expr_res(t, page_num, dir_num, op1);
 
     if (op != E_NOT) {
-        op2_qrv = get_expr_res(t, p, dir_num, op2);
+        op2_qrv = get_expr_res(t, page_num, dir_num, op2);
         res_qrv = do_bool(qrv_to_bool(op1_qrv), qrv_to_bool(op2_qrv), op);
         destory_query_result_val(op1_qrv);
         destory_query_result_val(op2_qrv);
@@ -577,18 +575,18 @@ static QueryResultVal* cmd_bool(Table* t, Page* p, int dir_num, Ast* op1, Ast* o
     return res_qrv;
 }
 
-static QueryResultVal* cmd_cacl(Table* t, Page* p, int dir_num, Ast* op1, Ast* op2, ExprOp op)
+static QueryResultVal* cmd_cacl(Table* t, int page_num, int dir_num, Ast* op1, Ast* op2, ExprOp op)
 {
     QueryResultVal *op1_qrv, *op2_qrv, *res_qrv;
 
-    op1_qrv = get_expr_res(t, p, dir_num, op1);
+    op1_qrv = get_expr_res(t, page_num, dir_num, op1);
 
     if (op == E_B_NOT) {
         destory_query_result_val(op1_qrv);
         return do_calc_int(qrv_to_int(op1_qrv), 0, op);
     }
 
-    op2_qrv = get_expr_res(t, p, dir_num, op2);
+    op2_qrv = get_expr_res(t, page_num, dir_num, op2);
 
     if (op == E_B_AND || op == E_B_OR || op == E_B_XOR) {
         res_qrv = do_calc_int(qrv_to_int(op1_qrv), qrv_to_int(op2_qrv), op);
@@ -606,12 +604,12 @@ static QueryResultVal* cmd_cacl(Table* t, Page* p, int dir_num, Ast* op1, Ast* o
 }
 
 // 如果一个是字符串，一个是数字，那么都转成数字比较
-static QueryResultVal* cmd_compare(Table* t, Page* p, int dir_num, Ast* op1, Ast* op2, ExprOp op)
+static QueryResultVal* cmd_compare(Table* t, int page_num, int dir_num, Ast* op1, Ast* op2, ExprOp op)
 {
     QueryResultVal *op1_qrv, *op2_qrv, *res_qrv;
 
-    op1_qrv = get_expr_res(t, p, dir_num, op1);
-    op2_qrv = get_expr_res(t, p, dir_num, op2);
+    op1_qrv = get_expr_res(t, page_num, dir_num, op1);
+    op2_qrv = get_expr_res(t, page_num, dir_num, op2);
 
     if (op1_qrv->type == C_DOUBLE || op2_qrv->type == C_DOUBLE) {
         res_qrv = do_compare_double(qrv_to_double(op1_qrv), qrv_to_double(op2_qrv), op);
@@ -657,19 +655,22 @@ static QueryResultVal* av_to_qrv(Ast* a)
     return qrv;
 }
 
-static QueryResultVal* get_expr_res(Table* t, Page* p, int dir_num, Ast* expr)
+static QueryResultVal* get_expr_res(Table* t, int page_num, int dir_num, Ast* expr)
 {
     assert(expr->kind == AST_EXP || expr->kind == AST_VAL);
 
     Ast *op1, *op2;
     ExprOp op;
     QueryResultVal* qrv;
+    void* data;
 
     op = expr->attr;
 
     if (expr->kind == AST_VAL) {
         if (GET_AV_TYPE(expr) == AVT_ID) {
-            qrv = unserialize_row(row_real_pos(p, dir_num), t->row_fmt, GET_AV_STR(expr));
+            data = copy_row_raw_data(t, page_num, dir_num);
+            qrv = unserialize_row(data, t->row_fmt, GET_AV_STR(expr));
+            free(data);
         } else {
             qrv = av_to_qrv(expr);
         }
@@ -681,15 +682,15 @@ static QueryResultVal* get_expr_res(Table* t, Page* p, int dir_num, Ast* expr)
     op2 = expr->child[1];
 
     if (op == E_EQ || op == E_NEQ || op == E_GT || op == E_GTE || op == E_LT || op == E_LTE) {
-        return cmd_compare(t, p, dir_num, op1, op2, op);
+        return cmd_compare(t, page_num, dir_num, op1, op2, op);
     } else if (op == E_NOT || op == E_OR || op == E_AND) {
-        return cmd_bool(t, p, dir_num, op1, op2, op);
+        return cmd_bool(t, page_num, dir_num, op1, op2, op);
     }
 
-    return cmd_cacl(t, p, dir_num, op1, op2, op);
+    return cmd_cacl(t, page_num, dir_num, op1, op2, op);
 }
 
-static int get_where_expr_res(Table* t, Page* p, int dir_num, Ast* where_expr)
+static int get_where_expr_res(Table* t, int page_num, int dir_num, Ast* where_expr)
 {
     assert(where_expr == NULL || where_expr->kind == AST_WHERE_EXP);
 
@@ -700,7 +701,7 @@ static int get_where_expr_res(Table* t, Page* p, int dir_num, Ast* where_expr)
         return 1;
     }
 
-    res_qrv = get_expr_res(t, p, dir_num, where_expr->child[0]);
+    res_qrv = get_expr_res(t, page_num, dir_num, where_expr->child[0]);
     res = qrv_to_bool(res_qrv);
     destory_query_result_val(res_qrv);
     return res;
@@ -713,9 +714,10 @@ QueryResult* filter_row(Table* t, Cursor* c, Ast* expect_cols, Ast* where_top_ex
     QueryResult* full_row;
     int col_cnt = 0;
     int table_row_count = 0;
+    void* data;
 
     while (!cursor_is_end(c)) {
-        if (!cursor_value_is_deleted(c) && get_where_expr_res(t, cursor_page(c), cursor_dir_num(c), where_top_expr)) {
+        if (!cursor_value_is_deleted(c) && get_where_expr_res(t, cursor_page_num(c), cursor_dir_num(c), where_top_expr)) {
             qr = smalloc(expect_cols->children * sizeof(QueryResultVal*));
             // 符合条件,返回这条数据
             for (int i = 0; i < expect_cols->children; i++) {
@@ -723,7 +725,9 @@ QueryResult* filter_row(Table* t, Cursor* c, Ast* expect_cols, Ast* where_top_ex
                     qr[col_cnt++] = av_to_qrv(expect_cols->child[i]);
                 } else {
                     if (strcmp(GET_AV_STR(expect_cols->child[i]), "*") == 0) {
-                        full_row = unserialize_full_row(row_real_pos(cursor_page(c), cursor_dir_num(c)), t->row_fmt, &table_row_count);
+                        data = copy_row_raw_data(t, cursor_page_num(c), cursor_dir_num(c));
+                        full_row = unserialize_full_row(data, t->row_fmt, &table_row_count);
+                        free(data);
 
                         for (int i = 0; i < table_row_count; i++) {
                             qr = realloc(qr, ++col_cnt * sizeof(QueryResultVal*));
@@ -732,7 +736,9 @@ QueryResult* filter_row(Table* t, Cursor* c, Ast* expect_cols, Ast* where_top_ex
 
                         free(full_row);
                     } else {
-                        qrv = unserialize_row(row_real_pos(cursor_page(c), cursor_dir_num(c)), t->row_fmt, GET_AV_STR(expect_cols->child[i]));
+                        data = copy_row_raw_data(t, cursor_page_num(c), cursor_dir_num(c));
+                        qrv = unserialize_row(data, t->row_fmt, GET_AV_STR(expect_cols->child[i]));
+                        free(data);
                         qr[col_cnt++] = qrv;
                     }
                 }
@@ -883,9 +889,9 @@ QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_cou
     return qrl;
 }
 
-static inline void remove_row_from_table(Table* t, Page* p, int dir_num)
+static inline void remove_row_from_table(Table* t, int page_num, int dir_num)
 {
-    set_row_deleted(p, dir_num);
+    set_row_deleted(t, page_num, dir_num);
     incr_table_row_cnt(t, -1);
 }
 
@@ -914,8 +920,8 @@ int delete_row(DB* d, Ast* delete_ast)
     c = cursor_init(t);
 
     while (!cursor_is_end(c)) {
-        if (!cursor_value_is_deleted(c) && get_where_expr_res(t, cursor_page(c), cursor_dir_num(c), where_top_list)) {
-            remove_row_from_table(t, c->page, c->page_dir_num);
+        if (!cursor_value_is_deleted(c) && get_where_expr_res(t, cursor_page_num(c), cursor_dir_num(c), where_top_list)) {
+            remove_row_from_table(t, cursor_page_num(c), cursor_dir_num(c));
             deleted_row_count++;
         }
         cursor_next(c);
@@ -939,7 +945,7 @@ static int check_set_list_valid(Table* t, Ast* set_list)
     return 1;
 }
 
-static int update_row(Table* t, Page* p, int dir_num, Ast* set_list)
+static int update_row(Table* t, int page_num, int dir_num, Ast* set_list)
 {
     assert(set_list->kind == AST_UPDATE_SET_LIST);
 
@@ -950,7 +956,9 @@ static int update_row(Table* t, Page* p, int dir_num, Ast* set_list)
     int row_cnt, col_num, res, len;
     void* data;
 
-    qr = unserialize_full_row(row_real_pos(p, dir_num), t->row_fmt, &row_cnt);
+    data = copy_row_raw_data(t, page_num, dir_num);
+    qr = unserialize_full_row(data, t->row_fmt, &row_cnt);
+    free(data);
 
     for (int i = 0; i < set_list->children; i++) {
         col_name = set_list->child[i]->child[0];
@@ -958,13 +966,13 @@ static int update_row(Table* t, Page* p, int dir_num, Ast* set_list)
 
         col_num = get_col_num_by_col_name(t->row_fmt, GET_AV_STR(col_name));
         origin = qr[col_num];
-        qr[col_num] = get_expr_res(t, p, dir_num, expr);
+        qr[col_num] = get_expr_res(t, page_num, dir_num, expr);
         destory_query_result_val(origin);
     }
 
     data = serialize_row(t->row_fmt, qr, &len);
     // 替换原有数据
-    res = replace_row(t, p, dir_num, data, len);
+    res = replace_row(t, page_num, dir_num, data, len);
     destory_query_result(qr, row_cnt);
     free(data);
     return res;
@@ -1006,9 +1014,9 @@ int update_table(DB* d, Ast* update)
 
     c = cursor_init(t);
     while (!cursor_is_end(c)) {
-        if (!cursor_value_is_deleted(c) && get_where_expr_res(t, cursor_page(c), cursor_dir_num(c), where)) {
+        if (!cursor_value_is_deleted(c) && get_where_expr_res(t, cursor_page_num(c), cursor_dir_num(c), where)) {
             if (offset-- <= 0) {
-                updated_row_count += update_row(t, cursor_page(c), cursor_dir_num(c), set_list);
+                updated_row_count += update_row(t, cursor_page_num(c), cursor_dir_num(c), set_list);
                 if (--lmt == 0) {
                     cursor_next(c);
                     break;
@@ -1028,6 +1036,7 @@ DB* db_init()
     DB* d;
     d = smalloc(sizeof(DB));
     d->tables = ht_init(NULL, NULL);
+    init_GP(10);
 
     if (access("t_sys_tables.dat", 0) == 0) {
         init_all_store_tables(d);
@@ -1277,7 +1286,7 @@ void table_flush(Table* t)
 {
     flush_pager_header(t->pager);
     for (int i = 0; i <= get_page_cnt(t->pager); i++) {
-        flush_page(t->pager, i);
+        // flush_page(t->pager, i);
     }
 }
 
@@ -1287,9 +1296,9 @@ void table_destory(Table* t)
     close(t->pager->data_fd);
 
     for (int i = 0; i < MAX_PAGE_CNT_P_TABLE; i++) {
-        if (t->pager->pages[i] != NULL) {
-            free(t->pager->pages[i]);
-        }
+        // if (t->pager->pages[i] != NULL) {
+        //     free(t->pager->pages[i]);
+        // }
     }
 
     free(t->pager);

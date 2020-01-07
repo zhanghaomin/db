@@ -3,6 +3,8 @@
 #include <assert.h>
 #include <stdarg.h>
 
+Ast* G_AST = NULL;
+
 Ast* create_ast(int children, AstKind kind, int attr, ...)
 {
     va_list ap;

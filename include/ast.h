@@ -200,6 +200,6 @@ Ast* ast_add_child(Ast* a, Ast* child);
 void print_ast(Ast* a);
 void ast_destory(Ast* a);
 
-Ast* G_AST;
+extern Ast* G_AST;
 
 #endif
