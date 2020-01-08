@@ -2,7 +2,6 @@
 #define _TABLE_H
 
 #define PAGE_SIZE 4096
-#define MAX_PAGE_CNT_P_TABLE 4096
 
 #include "ast.h"
 #include "ht.h"
