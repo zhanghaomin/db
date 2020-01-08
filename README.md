@@ -10,5 +10,5 @@ v0.0.2
 6. sql -> ast -> execute
 
 TODO
-1. 支持order by
+1. 临时表不交换至硬盘?
 1. ast -> logic-plan
