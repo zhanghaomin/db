@@ -153,18 +153,27 @@ inline int get_page_cnt(Pager* pr)
     return pr->header.page_cnt;
 }
 
+void destory_GP()
+{
+    lru_list_destory(GP->pages);
+    free(GP);
+}
+
 void clean_page(void* data)
 {
     Page* p;
+    Pager pr;
     p = (Page*)data;
 
-    if (lseek(p->header.fd, get_page_header_size() + PAGE_SIZE * p->header.page_num, SEEK_SET) == -1) {
+    if (lseek(p->header.fd, sizeof(pr.header) + PAGE_SIZE * p->header.page_num, SEEK_SET) == -1) {
         return;
     }
 
     if (write(p->header.fd, p, PAGE_SIZE) == -1) {
         return;
     }
+
+    free(data);
 }
 
 void init_GP(int size)

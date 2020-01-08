@@ -98,6 +98,7 @@ void* copy_row_raw_data(Table* t, int page_num, int dir_num);
 Pager* init_pager(int fd);
 void init_GP(int size);
 void clean_page(void* data);
+void destory_GP();
 
 int calc_serialized_row_len(RowFmt* rf, QueryResult* qr);
 int get_col_num_by_col_name(RowFmt* rf, char* col_name);

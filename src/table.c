@@ -1285,21 +1285,12 @@ Table* open_table(DB* d, char* name)
 void table_flush(Table* t)
 {
     flush_pager_header(t->pager);
-    for (int i = 0; i <= get_page_cnt(t->pager); i++) {
-        // flush_page(t->pager, i);
-    }
 }
 
 void table_destory(Table* t)
 {
     free(t->name);
     close(t->pager->data_fd);
-
-    for (int i = 0; i < MAX_PAGE_CNT_P_TABLE; i++) {
-        // if (t->pager->pages[i] != NULL) {
-        //     free(t->pager->pages[i]);
-        // }
-    }
 
     free(t->pager);
     free_row_fmt(t->row_fmt);
@@ -1308,6 +1299,8 @@ void table_destory(Table* t)
 
 void db_destory(DB* d)
 {
+    destory_GP();
+
     FOREACH_HT(d->tables, k, t)
     table_flush(t);
     ENDFOREACH()
