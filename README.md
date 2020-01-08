@@ -11,4 +11,5 @@ v0.0.2
 
 TODO
 1. 临时表不交换至硬盘?
+2. group by
 1. ast -> logic-plan
