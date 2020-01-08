@@ -166,13 +166,16 @@ void clean_page(void* data)
     p = (Page*)data;
 
     if (lseek(p->header.fd, sizeof(pr.header) + PAGE_SIZE * p->header.page_num, SEEK_SET) == -1) {
+        goto free;
         return;
     }
 
     if (write(p->header.fd, p, PAGE_SIZE) == -1) {
+        goto free;
         return;
     }
 
+free:
     free(data);
 }
 

@@ -840,23 +840,68 @@ static Table* copy_tmp_table(DB* d, Table* origin_table)
     return open_table(d, tmp_name);
 }
 
+static int cmp_order = 0; // 0 asc, 1 desc
+static int cmp_col_num = 0;
+static int cmp_order_num = 0;
+
+static void init_sort_help_info(QueryResultList* qrl, int row_cnt, int col_cnt)
+{
+    for (int i = 0; i < row_cnt; i++) {
+        qrl[i] = realloc(qrl[i], sizeof(QueryResult*) * (col_cnt + 1));
+        qrl[i][col_cnt] = smalloc(sizeof(QueryResultVal));
+        qrl[i][col_cnt]->type = C_INT;
+        qrl[i][col_cnt]->data = smalloc(sizeof(int));
+        memcpy(qrl[i][col_cnt]->data, &i, sizeof(int));
+    }
+}
+
+static void reset_sort_help_info(QueryResultList* qrl, int row_cnt, int col_cnt)
+{
+    for (int i = 0; i < row_cnt; i++) {
+        memcpy(qrl[i][col_cnt]->data, &i, sizeof(int));
+    }
+}
+
+static void remove_sort_help_info(QueryResultList* qrl, int row_cnt, int col_cnt)
+{
+    for (int i = 0; i < row_cnt; i++) {
+        free(qrl[i][col_cnt]->data);
+        free(qrl[i][col_cnt]);
+        qrl[i] = realloc(qrl[i], sizeof(QueryResult*) * col_cnt);
+    }
+}
+
 int row_cmp_func(const void* p1, const void* p2)
 {
-    QueryResult *qr1, *qr2;
     QueryResultVal *qrv1, *qrv2;
+    int res;
 
-    qr1 = (QueryResult*)p1;
-    qr2 = (QueryResult*)p2;
-    qrv1 = qr1[0];
-    qrv2 = qr2[0];
+    qrv1 = (*(QueryResultList*)p1)[cmp_col_num];
+    qrv2 = (*(QueryResultList*)p2)[cmp_col_num];
 
     if (qrv1->type == C_INT) {
-        return qrv_to_int(qrv1) - qrv_to_int(qrv2) < 0 ? 1 : -1;
+        res = qrv_to_int(qrv1) - qrv_to_int(qrv2);
     } else if (qrv1->type == C_DOUBLE) {
-        return qrv_to_double(qrv1) - qrv_to_double(qrv2) < 0 ? 1 : -1;
+        res = qrv_to_double(qrv1) - qrv_to_double(qrv2);
     } else {
-        return strcmp(qrv1->data, qrv2->data) < 0 ? 1 : -1;
+        res = strcmp(qrv1->data, qrv2->data);
     }
+
+    if (res == 0) {
+        qrv1 = (*(QueryResultList*)p1)[cmp_order_num + 1];
+        qrv2 = (*(QueryResultList*)p2)[cmp_order_num + 1];
+        if (qrv1->type == C_INT) {
+            res = qrv_to_int(qrv1) - qrv_to_int(qrv2);
+        } else if (qrv1->type == C_DOUBLE) {
+            res = qrv_to_double(qrv1) - qrv_to_double(qrv2);
+        } else {
+            res = strcmp(qrv1->data, qrv2->data);
+        }
+
+        return res;
+    }
+
+    return cmp_order == 1 ? -res : res;
 }
 
 // TODO，生成临时表
@@ -878,7 +923,17 @@ static Table* make_order_tmp_table(DB* d, Table* origin_table, Ast* order_by)
         return tmp_table;
     }
 
-    qsort(qrl, row_cnt, sizeof(QueryResult*), row_cmp_func);
+    init_sort_help_info(qrl, row_cnt, col_cnt);
+
+    for (int i = order_by->children - 1; i >= 0; i--) {
+        cmp_order = order_by->child[i]->attr;
+        cmp_col_num = get_col_num_by_col_name(origin_table->row_fmt, GET_AV_STR(order_by->child[i]->child[0]));
+        cmp_order_num = col_cnt - 1;
+        qsort(qrl, row_cnt, sizeof(QueryResult*), row_cmp_func);
+        reset_sort_help_info(qrl, row_cnt, col_cnt);
+    }
+
+    remove_sort_help_info(qrl, row_cnt, col_cnt);
 
     for (int i = 0; i < row_cnt; i++) {
         add_row_to_table(tmp_table, qrl[i]);
