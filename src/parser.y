@@ -9,7 +9,7 @@ int yyerror(char *s);
 %}
 
 %token T_INT T_VARCHAR T_CHAR T_DOUBLE
-%token T_SELECT T_INSERT T_INTO T_VALUES T_UPDATE T_DELETE T_ORDER T_BY T_ASC T_DESC 
+%token T_SELECT T_INSERT T_INTO T_VALUES T_UPDATE T_DELETE T_ORDER T_BY T_ASC T_DESC T_DROP
 %token T_WHERE T_FROM T_SET T_CREATE T_TABLE T_LIMIT
 %token T_NEQ T_LTE T_GTE T_NOT
 %token T_AND T_OR
@@ -18,7 +18,7 @@ int yyerror(char *s);
 
 %type <num> col_type
 %type <ast> topstmt select_stmt where expr cols_stmt table_name create_table_stmt order_by order_by_col_list order_by_col limit limit_clause
-%type <ast> col_fmt_stmt col_fmt_list_stmt insert_row_list_stmt insert_value_list_stmt insert_stmt insert_value delete_stmt update_stmt set_stmt set_clause_stmt
+%type <ast> col_fmt_stmt col_fmt_list_stmt insert_row_list_stmt insert_value_list_stmt insert_stmt insert_value delete_stmt update_stmt set_stmt set_clause_stmt drop_stmt
 
 %left T_OR
 %left T_AND
@@ -43,6 +43,11 @@ topstmt:
     | insert_stmt ';' { $$ = $1; G_AST = $$; YYACCEPT; }
     | delete_stmt ';' { $$ = $1; G_AST = $$; YYACCEPT; }
     | update_stmt ';' { $$ = $1; G_AST = $$; YYACCEPT; }
+    | drop_stmt ';' { $$ = $1; G_AST = $$; YYACCEPT; }
+    ;
+
+drop_stmt:
+      T_DROP T_TABLE table_name { $$ = create_ast(1, AST_DROP_TABLE, -1, $3); }
     ;
 
 update_stmt:

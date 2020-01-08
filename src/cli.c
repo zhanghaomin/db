@@ -52,6 +52,10 @@ void do_cmd(DB* d, Ast* a)
         res = update_table(d, G_AST);
         printf("%d effected rows.\n", res);
         ast_destory(G_AST);
+    } else if (a->kind == AST_DROP_TABLE) {
+        drop_table(d, G_AST);
+        printf("delete ok.\n");
+        ast_destory(G_AST);
     }
 
     gettimeofday(&t2, NULL);

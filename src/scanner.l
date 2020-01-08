@@ -28,6 +28,9 @@ int yyerror(char *s);
 "double" {return T_DOUBLE;}
 "varchar" {return T_VARCHAR;}
 "char" {return T_CHAR;}
+"asc" {return T_ASC;}
+"desc" {return T_DESC;}
+"drop" {return T_DROP;}
 
 "and" {return T_AND;}
 "or" {return T_OR;}

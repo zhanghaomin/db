@@ -10,4 +10,5 @@ v0.0.2
 6. sql -> ast -> execute
 
 TODO
+1. 支持order by
 1. ast -> logic-plan

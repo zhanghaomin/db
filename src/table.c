@@ -12,11 +12,14 @@ static QueryResultVal* get_expr_res(Table* t, int page_num, int dir_num, Ast* ex
 static QueryResultVal* av_to_qrv(Ast* a);
 static int execute_update_sql(DB* d, char* sql);
 static int execute_insert_sql(DB* d, char* sql);
+static int execute_delete_sql(DB* d, char* sql);
 static QueryResultList* execute_select_sql(DB* d, char* sql, int* row_cnt, int* col_cnt);
 int lex_read(char* s, int len);
 static int qrv_to_int(QueryResultVal* qrv);
 static void init_all_sys_tables(DB* d);
 static void init_all_store_tables(DB* d);
+static void table_destory(Table* t);
+static int delete_table(DB* d, Table* t);
 
 char* SYS_TABLES = "sys_tables";
 char* SYS_COLS = "sys_cols";
@@ -823,11 +826,73 @@ int check_where_ast_valid(Table* t, Ast* where_expr)
     return check_where_ast_valid(t, where_expr->child[0]) && check_where_ast_valid(t, where_expr->child[1]);
 }
 
+static Table* copy_tmp_table(DB* d, Table* origin_table)
+{
+    char tmp_name[1024];
+
+    sprintf(tmp_name, "%s#$~tmp", origin_table->name);
+
+    for (int i = 0; i < origin_table->row_fmt->origin_cols_count; i++) {
+        add_col_fmt(d, tmp_name, origin_table->row_fmt->origin_cols_name[i], i, origin_table->row_fmt->cols_fmt[i].type, origin_table->row_fmt->cols_fmt[i].len);
+    }
+
+    add_table(d, tmp_name);
+    return open_table(d, tmp_name);
+}
+
+int row_cmp_func(const void* p1, const void* p2)
+{
+    QueryResult *qr1, *qr2;
+    QueryResultVal *qrv1, *qrv2;
+
+    qr1 = (QueryResult*)p1;
+    qr2 = (QueryResult*)p2;
+    qrv1 = qr1[0];
+    qrv2 = qr2[0];
+
+    if (qrv1->type == C_INT) {
+        return qrv_to_int(qrv1) - qrv_to_int(qrv2) < 0 ? 1 : -1;
+    } else if (qrv1->type == C_DOUBLE) {
+        return qrv_to_double(qrv1) - qrv_to_double(qrv2) < 0 ? 1 : -1;
+    } else {
+        return strcmp(qrv1->data, qrv2->data) < 0 ? 1 : -1;
+    }
+}
+
+// TODO，生成临时表
+static Table* make_order_tmp_table(DB* d, Table* origin_table, Ast* order_by)
+{
+    assert(order_by->kind == AST_ORDER_BY);
+
+    Table* tmp_table;
+    int row_cnt, col_cnt;
+    QueryResultList* qrl;
+    char sql[1024];
+
+    // 将原表所有数据拿出
+    tmp_table = copy_tmp_table(d, origin_table);
+    sprintf(sql, "select * from %s;", origin_table->name);
+    qrl = execute_select_sql(d, sql, &row_cnt, &col_cnt);
+
+    if (qrl == NULL) {
+        return tmp_table;
+    }
+
+    qsort(qrl, row_cnt, sizeof(QueryResult*), row_cmp_func);
+
+    for (int i = 0; i < row_cnt; i++) {
+        add_row_to_table(tmp_table, qrl[i]);
+    }
+
+    destory_query_result_list(qrl, row_cnt, col_cnt);
+    return tmp_table;
+}
+
 QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_count, int with_header)
 {
     assert(select_ast->kind == AST_SELECT);
 
-    Ast *table_name, *expect_cols, *where_top_list, *order_by UNUSED, *limit;
+    Ast *table_name, *expect_cols, *where_top_list, *order_by, *limit;
     Table* t;
     QueryResultList* qrl = NULL;
     QueryResult* qr;
@@ -871,6 +936,12 @@ QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_cou
         qrl[(*row_count) - 1] = get_select_header(t, expect_cols);
     }
 
+    if (order_by != NULL) {
+        t = make_order_tmp_table(d, t, order_by); // 下面直接用临时表查询
+        cursor_destory(c);
+        c = cursor_init(t);
+    }
+
     while ((qr = filter_row(t, c, expect_cols, where_top_list)) != NULL) {
         if (offset-- > 0) {
             destory_query_result(qr, *col_count);
@@ -885,6 +956,11 @@ QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_cou
         }
     }
 
+    if (order_by != NULL) {
+        // 删除临时表
+        delete_table(d, t);
+    }
+
     cursor_destory(c);
     return qrl;
 }
@@ -893,6 +969,36 @@ static inline void remove_row_from_table(Table* t, int page_num, int dir_num)
 {
     set_row_deleted(t, page_num, dir_num);
     incr_table_row_cnt(t, -1);
+}
+
+static int delete_table(DB* d, Table* t)
+{
+    char sql[1024];
+    char file_name[1024];
+
+    sprintf(sql, "delete from %s where `name` = '%s';", SYS_TABLES, t->name);
+    execute_delete_sql(d, sql);
+    sprintf(sql, "delete from %s where `table_name` = '%s';", SYS_COLS, t->name);
+    execute_delete_sql(d, sql);
+    sprintf(sql, "delete from %s where `table_name` = '%s';", SYS_FREE_SPACE, t->name);
+    execute_delete_sql(d, sql);
+    get_table_file_name(t->name, file_name);
+    unlink(file_name);
+    ht_delete(d->tables, t->name);
+    table_destory(t);
+    return 0;
+}
+
+int drop_table(DB* d, Ast* drop_table_ast)
+{
+    assert(drop_table_ast->kind == AST_DROP_TABLE);
+
+    Ast* table_name;
+    Table* t;
+
+    table_name = drop_table_ast->child[0];
+    t = open_table(d, GET_AV_STR(table_name->child[0]));
+    return delete_table(d, t);
 }
 
 int delete_row(DB* d, Ast* delete_ast)
@@ -1030,7 +1136,6 @@ int update_table(DB* d, Ast* update)
     return updated_row_count;
 }
 
-// | len | table_count | table_fmt | ... |
 DB* db_init()
 {
     DB* d;
@@ -1091,6 +1196,20 @@ static int execute_insert_sql(DB* d, char* sql)
     assert(G_AST->kind == AST_INSERT);
 
     res = insert_row(d, G_AST);
+    ast_destory(G_AST);
+    G_AST = origin;
+    return res;
+}
+
+static int execute_delete_sql(DB* d, char* sql)
+{
+    int res;
+    Ast* origin;
+    origin = G_AST;
+    lex_read(sql, strlen(sql));
+    assert(G_AST->kind == AST_DELETE);
+
+    res = delete_row(d, G_AST);
     ast_destory(G_AST);
     G_AST = origin;
     return res;
@@ -1250,7 +1369,8 @@ Table* open_table(DB* d, char* name)
         t->pager = init_pager(open(table_file_name, O_CREAT | O_RDWR, 0644));
         t->row_fmt = smalloc(sizeof(RowFmt));
 
-        sprintf(sql, "select * from %s where table_name = '%s' order by origin_col_num;", SYS_COLS, name);
+        // sprintf(sql, "select * from %s where table_name = '%s' order by origin_col_num;", SYS_COLS, name);
+        sprintf(sql, "select * from %s where table_name = '%s';", SYS_COLS, name);
         qrl = execute_select_sql(d, sql, &row_cnt, &col_cnt);
 
         t->row_fmt->origin_cols_count = row_cnt;
@@ -1287,7 +1407,7 @@ void table_flush(Table* t)
     flush_pager_header(t->pager);
 }
 
-void table_destory(Table* t)
+static void table_destory(Table* t)
 {
     free(t->name);
     close(t->pager->data_fd);

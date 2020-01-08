@@ -65,6 +65,7 @@ int insert_row(DB* d, Ast* a);
 int delete_row(DB* d, Ast* a);
 int create_table(DB* d, Ast* a);
 int update_table(DB* d, Ast* update);
+int drop_table(DB* d, Ast* drop_table_ast);
 int incr_table_free_space(Table* t, int page_num, int step);
 int insert_table_free_space(Table* t, int page_num, int free_space);
 DB* db_init();
@@ -73,6 +74,7 @@ QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_cou
 int get_table_row_cnt(Table* t);
 int get_query_result_val_len(QueryResultVal* qrv);
 int get_page_free_space_stored(Table* t, int page_num);
+int row_cmp_func(const void* p1, const void* p2);
 
 void println_rows(QueryResultList* qrl, int qrl_len, int qr_len);
 
