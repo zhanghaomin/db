@@ -2,18 +2,12 @@
 # db
 simple database 
 
-v0.0.1
+v0.0.2
 1. crud
 2. 不考虑索引 
 3. 块内紧密存储
-4. 储存每个块的剩余空间（初期用数组）
-5. 一张表最大4096个page
+4. 储存每个块的剩余空间
 6. sql -> ast -> execute
 
 TODO
 1. ast -> logic-plan
-2. lru
-
-v0.0.2
-1. 增加lru，可以设置最大缓存页数
-2. 移除单表最大4096个page限制
