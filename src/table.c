@@ -828,9 +828,10 @@ int check_where_ast_valid(Table* t, Ast* where_expr)
 
 static Table* copy_tmp_table(DB* d, Table* origin_table)
 {
+    static int tmp = 1;
     char tmp_name[1024];
 
-    sprintf(tmp_name, "%s#$~tmp", origin_table->name);
+    sprintf(tmp_name, "#$~tmp%d", tmp);
 
     for (int i = 0; i < origin_table->row_fmt->origin_cols_count; i++) {
         add_col_fmt(d, tmp_name, origin_table->row_fmt->origin_cols_name[i], i, origin_table->row_fmt->cols_fmt[i].type, origin_table->row_fmt->cols_fmt[i].len);
@@ -888,8 +889,8 @@ int row_cmp_func(const void* p1, const void* p2)
     }
 
     if (res == 0) {
-        qrv1 = (*(QueryResultList*)p1)[cmp_order_num + 1];
-        qrv2 = (*(QueryResultList*)p2)[cmp_order_num + 1];
+        qrv1 = (*(QueryResultList*)p1)[cmp_order_num];
+        qrv2 = (*(QueryResultList*)p2)[cmp_order_num];
         if (qrv1->type == C_INT) {
             res = qrv_to_int(qrv1) - qrv_to_int(qrv2);
         } else if (qrv1->type == C_DOUBLE) {
@@ -928,7 +929,7 @@ static Table* make_order_tmp_table(DB* d, Table* origin_table, Ast* order_by)
     for (int i = order_by->children - 1; i >= 0; i--) {
         cmp_order = order_by->child[i]->attr;
         cmp_col_num = get_col_num_by_col_name(origin_table->row_fmt, GET_AV_STR(order_by->child[i]->child[0]));
-        cmp_order_num = col_cnt - 1;
+        cmp_order_num = col_cnt;
         qsort(qrl, row_cnt, sizeof(QueryResult*), row_cmp_func);
         reset_sort_help_info(qrl, row_cnt, col_cnt);
     }
@@ -942,6 +943,27 @@ static Table* make_order_tmp_table(DB* d, Table* origin_table, Ast* order_by)
     destory_query_result_list(qrl, row_cnt, col_cnt);
     return tmp_table;
 }
+
+// static Table* make_filtered_tmp_table(DB* d, Table* origin_table, Ast* where)
+// {
+//     assert(where->kind == AST_WHERE_EXP);
+
+//     Table* tmp_table;
+//     int col_cnt;
+//     QueryResult* qr;
+//     Cursor* c;
+
+//     tmp_table = copy_tmp_table(d, origin_table);
+//     c = cursor_init(tmp_table);
+
+//     while ((qr = filter_row(tmp_table, c, where, &col_cnt)) != NULL) {
+//         add_row_to_table(tmp_table, qr);
+//         destory_query_result(qr, col_cnt);
+//     }
+
+//     cursor_destory(c);
+//     return tmp_table;
+// }
 
 QueryResultList* select_row(DB* d, Ast* select_ast, int* row_count, int* col_count, int with_header)
 {
