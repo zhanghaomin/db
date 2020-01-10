@@ -2,14 +2,7 @@
 # db
 simple database 
 
-v0.0.2
-1. crud
-2. 不考虑索引 
-3. 块内紧密存储
-4. 储存每个块的剩余空间
-6. sql -> ast -> execute
-
-TODO
-1. 临时表不交换至硬盘?
-2. group by
-1. ast -> logic-plan
+v0.0.3 
+1. 支持索引 
+2. 优化储存结构
+3. logic plan/physic plan
