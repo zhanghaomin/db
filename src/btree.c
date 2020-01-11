@@ -97,12 +97,7 @@ static int space_enough(BtreeNode* node, void* key, int len)
     return 1;
 }
 
-static int lt(BtreeKeyType type, void* val1, void* val2, int len1, int len2)
-{
-    return 1;
-}
-
-static int eq(BtreeKeyType type, void* val1, void* val2, int len1, int len2)
+static int compare(BtreeKeyType type, void* val1, void* val2, int len1, int len2)
 {
     return 1;
 }
@@ -133,7 +128,7 @@ research:
     if (cur->header.node_type == NODE) {
         for (int i = 0; i < cur->header.rec_cnt; i++) {
             bnr = data;
-            if (lt(bt->key_type, key, bnr->key, len, node_key_len(bnr))) {
+            if (compare(bt->key_type, key, bnr->key, len, node_key_len(bnr)) < 0) {
                 // go left
                 cur = get_page(bnr->header.left);
                 goto research;
@@ -147,9 +142,9 @@ research:
     } else {
         for (int i = 0; i < cur->header.rec_cnt; i++) {
             blnr = data;
-            if (eq(bt->key_type, key, blnr->key, len, leaf_key_len(blnr))) {
+            if (compare(bt->key_type, key, blnr->key, len, leaf_key_len(blnr)) == 0) {
                 // TODO: add into overflow page
-            } else if (lt(bt->key_type, key, blnr->key, len, leaf_key_len(blnr))) {
+            } else if (compare(bt->key_type, key, blnr->key, len, leaf_key_len(blnr)) < 0) {
                 // 检查空间是否足够
                 if (space_enough(cur, key, len)) {
                     // insert here
